@@ -81,3 +81,13 @@ $routes->get('/reportes/mermas-json', 'ReportesController::mermasJson');
 $routes->get('/reportes/logistica-json', 'ReportesController::logisticaJson');
 $routes->get('/reportes/historial-pedidos-json', 'ReportesController::historialPedidosJson');
 $routes->get('/reportes/detalle-pedido-historico/(:num)', 'ReportesController::detallePedidoHistoricoJson/$1');
+
+$routes->group('admin/permisos', ['filter' => 'group:superadmin'], function($routes) {
+    $routes->get('/', 'PermisosController::index');
+    $routes->post('asignar-grupo', 'PermisosController::asignarGrupo');
+    $routes->post('gestionar-permiso', 'PermisosController::gestionarPermisoDirecto');
+});
+
+    $routes->get('/admin/permisos/usuarios-json', 'PermisosController::usuariosJson');
+
+    $routes->post('/perfil/actualizar', 'DashboardController::actualizarPerfil');

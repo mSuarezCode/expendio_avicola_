@@ -72,13 +72,18 @@ class AuthGroups extends ShieldAuthGroups
      * If a permission is not listed here it cannot be used.
      */
     public array $permissions = [
-        'admin.access'        => 'Can access the sites admin area',
+        'admin.access'    => 'Acceso al panel de administración',
         'admin.settings'      => 'Can access the main site settings',
         'users.manage-admins' => 'Can manage other admins',
         'users.create'        => 'Can create new non-admin users',
         'users.edit'          => 'Can edit existing non-admin users',
         'users.delete'        => 'Can delete existing non-admin users',
         'beta.access'         => 'Can access beta-level features',
+        'lotes.crear'     => 'Registrar y editar lotes de aves',
+        'precios.editar'  => 'Modificar precios diarios del catálogo',
+        'pedidos.eliminar'=> 'Cancelar o eliminar pedidos',
+        'reportes.ver'    => 'Consultar reportes y estadísticas de negocio',
+        'cierre.ejecutar' => 'Realizar el cierre de caja y jornada',
     ];
 
     /**

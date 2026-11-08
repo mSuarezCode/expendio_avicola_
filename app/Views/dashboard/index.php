@@ -11,7 +11,7 @@
 </head>
 <body class="bg-light">
 
-    <!-- Navbar Principal -->
+    <!-- Navbar Principal Agrupado -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
         <div class="container-fluid">
             <a class="navbar-brand fw-bold" href="#"><i class="fa-solid fa-store text-warning me-2"></i> Expendio Avícola UX</a>
@@ -20,36 +20,87 @@
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
+                    <!-- OPERACIÓN DIARIA (Siempre a la vista) -->
                     <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="cambiarVista('proveedores', this)"><i class="fa-solid fa-truck-field me-1"></i> Proveedores</a>
+                        <a class="nav-link" href="#" onclick="cambiarVista('pedidos', this)"><i class="fa-solid fa-receipt me-1"></i> Pedidos</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="cambiarVista('repartidores', this)"><i class="fa-solid fa-motorcycle me-1"></i> Repartidores</a>
+                        <a class="nav-link" href="#" onclick="cambiarVista('produccion', this)"><i class="fa-solid fa-feather me-1"></i> Producción</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="cambiarVista('produccion', this)"><i class="fa-solid fa-feather me-1"></i> Producción / Lotes</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="#" onclick="cambiarVista('despiece', this)"><i class="fa-solid fa-scissors me-1"></i> Despiece y Conversión</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="cambiarVista('precios', this)"><i class="fa-solid fa-tags me-1"></i> Precios Diarios</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="cambiarVista('pedidos', this)"><i class="fa-solid fa-receipt me-1"></i> Pedidos y Mostrador</a>
+                        <a class="nav-link" href="#" onclick="cambiarVista('despiece', this)"><i class="fa-solid fa-scissors me-1"></i> Despiece</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#" onclick="cambiarVista('mermas', this); cargarInventarioGeneral();">
-                            <i class="fa-solid fa-scale-balanced me-1"></i> Mermas y Almacén
+                            <i class="fa-solid fa-boxes-stacked me-1"></i> Almacén
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="cambiarVista('reportes', this)"><i class="fa-solid fa-chart-line me-1"></i> Reportes</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="cambiarVista('clientes', this); cargarClientesDirectorio();">
-                            <i class="fa-solid fa-address-book me-1"></i> Clientes
+
+                    <!-- MENÚ DESPLEGABLE: CATÁLOGOS Y CONTACTOS -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="menuCatalogos" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa-solid fa-folder-open me-1"></i> Catálogos
                         </a>
+                        <ul class="dropdown-menu dropdown-menu-dark shadow" aria-labelledby="menuCatalogos">
+                            <li>
+                                <a class="dropdown-item" href="#" onclick="cambiarVista('precios', this)">
+                                    <i class="fa-solid fa-tags me-2 text-warning"></i> Precios Diarios
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" onclick="cambiarVista('proveedores', this)">
+                                    <i class="fa-solid fa-truck-field me-2 text-secondary"></i> Proveedores
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" onclick="cambiarVista('repartidores', this)">
+                                    <i class="fa-solid fa-motorcycle me-2 text-info"></i> Repartidores
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" onclick="cambiarVista('clientes', this); cargarClientesDirectorio();">
+                                    <i class="fa-solid fa-address-book me-2 text-primary"></i> Clientes
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+
+                    <!-- REPORTES -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="cambiarVista('reportes', this); cargarReportesDinamicos();">
+                            <i class="fa-solid fa-chart-line me-1"></i> Reportes
+                        </a>
+                    </li>
+
+                    <!-- MENÚ DESPLEGABLE: SISTEMA Y SEGURIDAD -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle text-warning fw-bold" href="#" id="menuSistema" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa-solid fa-user-circle me-1"></i> <?= auth()->user()->username ?? 'Usuario' ?>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow" aria-labelledby="menuSistema">
+                            <li>
+                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalEditarPerfil">
+                                    <i class="fa-solid fa-user-pen me-2 text-info"></i> Editar Perfil
+                                </a>
+                            </li>
+                            <li>
+                                <h6 class="dropdown-header text-light">
+                                    <i class="fa-solid fa-shield-halved text-warning me-1"></i> Rol: <?= ucfirst(auth()->user()->getGroups()[0] ?? 'Sin Rol') ?>
+                                </h6>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item" href="#" onclick="cambiarVista('usuarios', this); cargarUsuariosPermisos();">
+                                    <i class="fa-solid fa-user-shield me-2 text-warning"></i> Usuarios y Roles
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item text-danger" href="<?= base_url('/logout') ?>">
+                                    <i class="fa-solid fa-right-from-bracket me-2"></i> Cerrar Sesión
+                                </a>
+                            </li>
+                        </ul>
                     </li>
                 </ul>
             </div>
@@ -767,17 +818,17 @@
             <!-- Pestañas internas de Reportes -->
             <ul class="nav nav-tabs mb-3" id="reportTabs" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link active fw-bold text-dark" id="tab-merma" data-bs-toggle="tab" data-bs-target="#content-merma" type="button">
+                    <button class="nav-link active fw-bold text-dark" id="tab-merma" data-bs-toggle="tab" data-bs-target="#content-merma" type="button" onclick="cargarReportesDinamicos()">
                         <i class="fa-solid fa-scale-balanced text-warning me-1"></i> Volumen de Merma y Rendimiento
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link fw-bold text-dark" id="tab-fluctuacion" data-bs-toggle="tab" data-bs-target="#content-fluctuacion" type="button">
+                    <button class="nav-link fw-bold text-dark" id="tab-fluctuacion" data-bs-toggle="tab" data-bs-target="#content-fluctuacion" type="button" onclick="cargarFluctuacionCompraVenta()">
                         <i class="fa-solid fa-arrow-trend-up text-success me-1"></i> Fluctuación de Lotes y Costos
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link fw-bold text-dark active" id="tab-rutas" data-bs-toggle="tab" data-bs-target="#content-rutas" type="button" onclick="cargarConcentradoColonias()" aria-selected="true" role="tab">
+                    <button class="nav-link fw-bold text-dark" id="tab-rutas" data-bs-toggle="tab" data-bs-target="#content-rutas" type="button" onclick="cargarConcentradoColonias()">
                         <i class="fa-solid fa-map-location-dot text-primary me-1"></i> Concentrado por Colonia (Zonas)
                     </button>
                 </li>
@@ -890,6 +941,39 @@
                     </div>
                 </div>
 
+            </div>
+        </div>
+
+        <!-- VISTA: GESTIÓN DE USUARIOS Y ROLES (SHIELD) -->
+        <div id="vista-usuarios" class="vista-secccion d-none">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="fa-solid fa-user-shield text-warning me-2"></i> Control de Usuarios y Permisos (Shield)</h2>
+                <span class="badge bg-dark fs-6"><i class="fa-solid fa-lock me-1 text-warning"></i> Administración de Seguridad</span>
+            </div>
+
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th class="ps-3"># ID</th>
+                                    <th>Usuario / Correo</th>
+                                    <th>Estado</th>
+                                    <th class="text-center">Rol Asignado (Grupo Shield)</th>
+                                    <th class="text-center">Acción Rápida de Rol</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaUsuariosShield">
+                                <tr>
+                                    <td colspan="5" class="text-center py-3 text-muted">
+                                        <i class="fa-solid fa-spinner fa-spin me-1"></i> Cargando lista de usuarios...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1808,6 +1892,32 @@
                 </div>
                 <div class="modal-footer py-2 bg-light">
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Editar Perfil -->
+    <div class="modal fade" id="modalEditarPerfil" tabindex="-1">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content shadow">
+                <div class="modal-header bg-dark text-white py-2">
+                    <h6 class="modal-title fw-bold"><i class="fa-solid fa-user-pen me-1"></i> Modificar Nombre de Usuario</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="formEditarPerfil">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Nuevo Nombre de Usuario</label>
+                            <input type="text" class="form-control" id="inputNuevoUsername" value="<?= auth()->user()->username ?? '' ?>" required>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success btn-sm fw-bold" onclick="guardarNuevoUsername()">
+                        <i class="fa-solid fa-check me-1"></i> Guardar
+                    </button>
                 </div>
             </div>
         </div>
@@ -4934,6 +5044,117 @@ function cargarConcentradoColonias() {
         console.error('Error al cargar concentrado por colonia:', err);
         tbodyZonas.innerHTML = `<tr><td colspan="4" class="text-center text-danger py-3">Ocurrió un error de conexión con el servidor.</td></tr>`;
     });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Cargar métricas y reportes al iniciar la página
+    if (typeof cargarReportesDinamicos === 'function') {
+        cargarReportesDinamicos();
+    }
+});
+
+// Cargar la lista de usuarios y sus grupos desde el servidor
+function cargarUsuariosPermisos() {
+    let tbody = document.getElementById('tablaUsuariosShield');
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-3 text-muted"><i class="fa-solid fa-spinner fa-spin me-1"></i> Cargando usuarios y roles...</td></tr>';
+
+    fetch('<?= base_url('/admin/permisos/usuarios-json') ?>', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success' && data.usuarios.length > 0) {
+            let html = '';
+            data.usuarios.forEach(u => {
+                let badgeRol = 'bg-secondary';
+                if (u.grupo === 'superadmin') badgeRol = 'bg-danger';
+                else if (u.grupo === 'gerente') badgeRol = 'bg-warning text-dark';
+                else if (u.grupo === 'repartidor') badgeRol = 'bg-info text-dark';
+                else if (u.grupo === 'mostrador') badgeRol = 'bg-primary';
+
+                html += `
+                    <tr>
+                        <td class="ps-3">#${u.id}</td>
+                        <td class="fw-bold">
+                            <i class="fa-solid fa-user text-secondary me-1"></i> ${u.username} <br>
+                            <small class="text-muted">${u.email}</small>
+                        </td>
+                        <td><span class="badge bg-success">Activo</span></td>
+                        <td class="text-center">
+                            <span class="badge ${badgeRol} fs-6">${u.grupo_titulo || u.grupo || 'Sin Rol'}</span>
+                        </td>
+                        <td class="text-center">
+                            <select class="form-select form-select-sm d-inline-block w-auto" onchange="cambiarRolUsuario(${u.id}, this.value)">
+                                <option value="superadmin" ${u.grupo === 'superadmin' ? 'selected' : ''}>Super Admin</option>
+                                <option value="gerente" ${u.grupo === 'gerente' ? 'selected' : ''}>Gerente</option>
+                                <option value="mostrador" ${u.grupo === 'mostrador' ? 'selected' : ''}>Mostrador</option>
+                                <option value="repartidor" ${u.grupo === 'repartidor' ? 'selected' : ''}>Repartidor</option>
+                            </select>
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        } else {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No hay usuarios registrados en el sistema.</td></tr>';
+        }
+    })
+    .catch(err => {
+        console.error('Error al cargar usuarios:', err);
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Error al conectar con el servidor.</td></tr>';
+    });
+}
+
+// Cambiar el rol de un usuario dinámicamente con AJAX
+function cambiarRolUsuario(userId, nuevoGrupo) {
+    let formData = new FormData();
+    formData.append('user_id', userId);
+    formData.append('grupo', nuevoGrupo);
+    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+
+    fetch('<?= base_url('/admin/permisos/asignar-grupo') ?>', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert(data.message);
+            cargarUsuariosPermisos(); // Recargar la tabla dinámicamente
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(err => console.error('Error al cambiar rol:', err));
+}
+
+function guardarNuevoUsername() {
+    let nuevoNombre = document.getElementById('inputNuevoUsername').value.trim();
+    if (!nuevoNombre) {
+        alert('Ingresa un nombre de usuario válido.');
+        return;
+    }
+
+    let formData = new FormData();
+    formData.append('username', nuevoNombre);
+    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+
+    fetch('<?= base_url('/perfil/actualizar') ?>', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert(data.message);
+            location.reload(); // Recarga para actualizar el nombre en el Navbar
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(err => console.error('Error:', err));
 }
 </script>
 </body>

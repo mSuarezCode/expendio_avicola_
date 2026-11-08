@@ -981,4 +981,34 @@ class DashboardController extends BaseController
             'message' => 'ID no proporcionado.'
         ]);
     }
+
+    public function actualizarPerfil()
+    {
+        $usuario = auth()->user();
+        if (!$usuario) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'No autorizado.']);
+        }
+
+        $nuevoUsername = trim($this->request->getPost('username'));
+        if (empty($nuevoUsername)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'El nombre de usuario no puede estar vacío.']);
+        }
+
+        $usersModel = new \CodeIgniter\Shield\Models\UserModel();
+        
+        // Actualizamos el username del usuario actual
+        $usuario->username = $nuevoUsername;
+        
+        if ($usersModel->save($usuario)) {
+            return $this->response->setJSON([
+                'status' => 'success',
+                'message' => '¡Nombre de usuario actualizado con éxito!'
+            ]);
+        }
+
+        return $this->response->setJSON([
+            'status' => 'error', 
+            'message' => 'No se pudo actualizar. Es posible que el nombre de usuario ya esté en uso.'
+        ]);
+    }
 }
