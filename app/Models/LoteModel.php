@@ -16,7 +16,8 @@ class LoteModel extends Model
         'costo_unitario', 
         'comprobante', 
         'observaciones', 
-        'fecha_recepcion'
+        'fecha_recepcion', 
+        'sucursal_id'
     ];
     protected $useTimestamps = true;
     protected $createdField  = 'created_at';

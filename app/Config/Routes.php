@@ -91,3 +91,12 @@ $routes->group('admin/permisos', ['filter' => 'group:superadmin'], function($rou
     $routes->get('/admin/permisos/usuarios-json', 'PermisosController::usuariosJson');
 
     $routes->post('/perfil/actualizar', 'DashboardController::actualizarPerfil');
+
+    $routes->post('/admin/permisos/crear-usuario', 'PermisosController::crearUsuario');
+
+$routes->group('admin/configuracion', ['filter' => 'group:superadmin'], function($routes) {
+    $routes->get('json', 'DashboardController::getConfiguracionJson');
+    $routes->post('guardar', 'DashboardController::guardarConfiguracion');
+});
+
+$routes->post('/admin/sucursal/cambiar', 'DashboardController::cambiarSucursal', ['filter' => 'group:superadmin']);

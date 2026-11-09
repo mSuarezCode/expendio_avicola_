@@ -14,7 +14,9 @@
     <!-- Navbar Principal Agrupado -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
         <div class="container-fluid">
-            <a class="navbar-brand fw-bold" href="#"><i class="fa-solid fa-store text-warning me-2"></i> Expendio Avícola UX</a>
+            <a class="navbar-brand fw-bold" href="#">
+                <i class="fa-solid fa-store text-warning me-2"></i> <span id="lblBrandNombre"><?= esc($nombreEmpresa ?? 'EXPENDIO AVÍCOLA') ?></span>
+            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -73,35 +75,95 @@
                     </li>
 
                     <!-- MENÚ DESPLEGABLE: SISTEMA Y SEGURIDAD -->
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle text-warning fw-bold" href="#" id="menuSistema" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa-solid fa-user-circle me-1"></i> <?= auth()->user()->username ?? 'Usuario' ?>
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow" aria-labelledby="menuSistema">
-                            <li>
-                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalEditarPerfil">
-                                    <i class="fa-solid fa-user-pen me-2 text-info"></i> Editar Perfil
-                                </a>
-                            </li>
-                            <li>
-                                <h6 class="dropdown-header text-light">
-                                    <i class="fa-solid fa-shield-halved text-warning me-1"></i> Rol: <?= ucfirst(auth()->user()->getGroups()[0] ?? 'Sin Rol') ?>
-                                </h6>
-                            </li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li>
-                                <a class="dropdown-item" href="#" onclick="cambiarVista('usuarios', this); cargarUsuariosPermisos();">
-                                    <i class="fa-solid fa-user-shield me-2 text-warning"></i> Usuarios y Roles
-                                </a>
-                            </li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li>
-                                <a class="dropdown-item text-danger" href="<?= base_url('/logout') ?>">
-                                    <i class="fa-solid fa-right-from-bracket me-2"></i> Cerrar Sesión
-                                </a>
-                            </li>
-                        </ul>
-                    </li>
+                    <!-- MENÚ DINÁMICO SEGÚN ROL -->
+                    <?php if (auth()->user()->inGroup('superadmin')): ?>
+                        <!-- MENÚ EXCLUSIVO PARA SUPERADMIN (Contiene la selección de sucursal y opciones del sistema) -->
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle text-warning fw-bold" href="#" id="menuSistema" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fa-solid fa-user-shield me-1"></i> <?= auth()->user()->username ?? 'Superadmin' ?>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow" aria-labelledby="menuSistema">
+                                <!-- Encabezado de Rol -->
+                                <li>
+                                    <h6 class="dropdown-header text-light">
+                                        <i class="fa-solid fa-shield-halved text-warning me-1"></i> Rol: Superadmin
+                                    </h6>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+
+                                <!-- SECCIÓN DE SUCURSALES DENTRO DEL DESPLEGABLE -->
+                                <li>
+                                    <h6 class="dropdown-header text-warning fw-bold text-uppercase" style="font-size: 0.75rem; letter-spacing: 0.5px;">
+                                        <i class="fa-solid fa-location-dot me-1"></i> Sucursal Activa:
+                                    </h6>
+                                </li>
+                                
+                                <!-- Contenedor de la sucursal actual seleccionada -->
+                                <li class="px-3 py-1">
+                                    <span class="text-light small fw-semibold" id="lblSucursalActiva">
+                                        <?= esc($sucursalActiva ?? 'Expendio Centro') ?>
+                                    </span>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+
+                                <!-- Lista de opciones para cambiar de sucursal -->
+                                <li>
+                                    <h6 class="dropdown-header text-secondary" style="font-size: 0.7rem;">Cambiar de Sucursal:</h6>
+                                </li>
+                                <?php if (!empty($sucursales)): ?>
+                                    <?php foreach ($sucursales as $suc): ?>
+                                        <?php $esActiva = (session()->get('sucursal_activa_id') == $suc['id']); ?>
+                                        <li>
+                                            <a class="dropdown-item py-1 ps-4" href="#" onclick="cambiarSucursal(<?= $suc['id'] ?>, '<?= esc($suc['nombre_municipio'], 'js') ?>')">
+                                                <i class="fa-solid fa-check text-success me-2 <?= $esActiva ? '' : 'd-none' ?>" id="check-<?= $suc['id'] ?>"></i> 
+                                                <?= esc($suc['nombre_municipio']) ?>
+                                            </a>
+                                        </li>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+
+                                <li><hr class="dropdown-divider"></li>
+
+                                <!-- Opciones Generales del Superadmin -->
+                                <li>
+                                    <a class="dropdown-item" href="#" onclick="cambiarVista('usuarios', this); cargarUsuariosPermisos();">
+                                        <i class="fa-solid fa-users-gear me-2 text-warning"></i> Usuarios y Roles
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalConfiguracionSistema" onclick="cargarConfiguracionSistema()">
+                                        <i class="fa-solid fa-gears me-2 text-warning"></i> Configuración de Empresa
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <a class="dropdown-item text-danger" href="<?= base_url('/logout') ?>">
+                                        <i class="fa-solid fa-right-from-bracket me-2"></i> Cerrar Sesión
+                                    </a>
+                                </li>
+                            </ul>
+                        </li>
+                    <?php else: ?>
+                        <!-- MENÚ PARA OTROS ROLES (Gerente, Mostrador, Repartidor) -->
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle text-light fw-bold" href="#" id="menuUsuarioSimple" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fa-solid fa-user-circle me-1"></i> <?= auth()->user()->username ?? 'Usuario' ?>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow" aria-labelledby="menuUsuarioSimple">
+                                <li>
+                                    <h6 class="dropdown-header text-light text-capitalize">
+                                        <i class="fa-solid fa-user-tag text-info me-1"></i> Rol: <?= auth()->user()->getGroups()[0] ?? 'Personal' ?>
+                                    </h6>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <a class="dropdown-item text-danger" href="<?= base_url('/logout') ?>">
+                                        <i class="fa-solid fa-right-from-bracket me-2"></i> Cerrar Sesión
+                                    </a>
+                                </li>
+                            </ul>
+                        </li>
+                    <?php endif; ?>
                 </ul>
             </div>
         </div>
@@ -946,9 +1008,12 @@
 
         <!-- VISTA: GESTIÓN DE USUARIOS Y ROLES (SHIELD) -->
         <div id="vista-usuarios" class="vista-secccion d-none">
+            <!-- Botón para abrir el modal de nuevo usuario (dentro de la vista de usuarios) -->
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2><i class="fa-solid fa-user-shield text-warning me-2"></i> Control de Usuarios y Permisos (Shield)</h2>
-                <span class="badge bg-dark fs-6"><i class="fa-solid fa-lock me-1 text-warning"></i> Administración de Seguridad</span>
+                <h2><i class="fa-solid fa-user-shield text-warning me-2"></i> Control de Usuarios y Permisos</h2>
+                <button class="btn btn-primary shadow-sm" data-bs-toggle="modal" data-bs-target="#modalNuevoUsuarioShield">
+                    <i class="fa-solid fa-user-plus me-1"></i> Registrar Nuevo Usuario
+                </button>
             </div>
 
             <div class="card shadow-sm border-0 mb-4">
@@ -1104,7 +1169,7 @@
                     <!-- Formato impreso físico (Térmico 80mm/58mm) -->
                     <div id="ticketTermico" class="bg-white p-3 border shadow-sm font-monospace text-dark" style="font-size: 12px; width: 100%;">
                         <div class="text-center mb-2">
-                            <h6 class="fw-bold mb-0 text-uppercase">EXPENDIO AVÍCOLA</h6>
+                            <h6 class="fw-bold mb-0 text-uppercase" id="tickBrandNombre"><?= esc($nombreEmpresa ?? 'EXPENDIO AVÍCOLA') ?></h6>
                             <small class="d-block">Venta y Procesado de Aves</small>
                             <small class="d-block">Tel/WA: 993-123-4567</small>
                             <hr class="my-1 border-dashed">
@@ -1923,6 +1988,73 @@
         </div>
     </div>
 
+    <!-- Modal Registrar Nuevo Usuario (Interno) -->
+    <div class="modal fade" id="modalNuevoUsuarioShield" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title fw-bold"><i class="fa-solid fa-user-plus me-2 text-warning"></i> Alta de Nuevo Usuario</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="formNuevoUsuarioShield">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Nombre de Usuario</label>
+                            <input type="text" class="form-control" id="shUsername" placeholder="Ej: carlos_reparto" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Correo Electrónico</label>
+                            <input type="email" class="form-control" id="shEmail" placeholder="Ej: carlos@expendio.com" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Contraseña Temporal</label>
+                            <input type="password" class="form-control" id="shPassword" placeholder="••••••••" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Rol / Grupo Asignado</label>
+                            <select class="form-select" id="shGrupo" required>
+                                <option value="gerente">Gerente</option>
+                                <option value="mostrador">Mostrador</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-success fw-bold" onclick="guardarUsuarioShieldAjax()">
+                            <i class="fa-solid fa-check me-1"></i> Guardar Usuario
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Configuración de Plataforma (Exclusivo Superadmin) -->
+    <div class="modal fade" id="modalConfiguracionSistema" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow">
+                <div class="modal-header bg-dark text-white py-2">
+                    <h6 class="modal-title fw-bold"><i class="fa-solid fa-gears me-1 text-warning"></i> Configuración de la Empresa</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="formConfiguracionSistema">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Nombre Comercial de la Empresa</label>
+                            <input type="text" class="form-control" id="inputCompanyNombre" placeholder="Ej: EXPENDIO AVÍCOLA" required>
+                            <small class="text-muted">Este nombre se actualizará en la barra de navegación superior y en los tickets de venta impresos.</small>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success btn-sm fw-bold" onclick="guardarConfiguracionSistema()">
+                        <i class="fa-solid fa-check me-1"></i> Guardar Cambios
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Bootstrap 5 JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -4256,18 +4388,18 @@ function cargarClientesDirectorio() {
 
         clientes.forEach(c => {
             html += `
-                <tr id="fila_cliente_${c.id}">
-                    <td class="ps-3">#${c.id}</td>
-                    <td class="fw-bold">${c.nombre}</td>
-                    <td><i class="fa-solid fa-phone text-success me-1"></i>${c.telefono}</td>
-                    <td><small>${c.colonia || '-'} <br> ${c.direccion || ''}</small></td>
-                    <td><small class="text-muted">${c.referencia || 'Sin referencias'}</small></td>
-                    <td class="text-center">
-                        <button class="btn btn-sm btn-outline-primary" onclick="editarClienteDirectorio(${c.id})" title="Editar datos del cliente">
-                            <i class="fa-solid fa-pen-to-square"></i> Editar
-                        </button>
-                    </td>
-                </tr>
+            <tr id="fila_cliente_${c.id}">
+                <td class="ps-3">#${c.id}</td>
+                <td class="fw-bold">${c.nombre}</td>
+                <td><i class="fa-solid fa-phone text-success me-1"></i>${c.telefono}</td>
+                <td><small>${c.colonia || '-'} <br> ${c.direccion || ''}</small></td>
+                <td><small class="text-muted">${c.referencia || 'Sin referencias'}</small></td>
+                <td class="text-center">
+                <button class="btn btn-sm btn-outline-primary" onclick="editarClienteDirectorio(${c.id})" title="Editar datos del cliente">
+                <i class="fa-solid fa-pen-to-square"></i> Editar
+                </button>
+                </td>
+            </tr>
             `;
         });
         tbody.innerHTML = html;
@@ -5085,10 +5217,10 @@ function cargarUsuariosPermisos() {
                         </td>
                         <td class="text-center">
                             <select class="form-select form-select-sm d-inline-block w-auto" onchange="cambiarRolUsuario(${u.id}, this.value)">
-                                <option value="superadmin" ${u.grupo === 'superadmin' ? 'selected' : ''}>Super Admin</option>
+                                <!--<option value="superadmin" ${u.grupo === 'superadmin' ? 'selected' : ''}>Super Admin</option>-->
                                 <option value="gerente" ${u.grupo === 'gerente' ? 'selected' : ''}>Gerente</option>
                                 <option value="mostrador" ${u.grupo === 'mostrador' ? 'selected' : ''}>Mostrador</option>
-                                <option value="repartidor" ${u.grupo === 'repartidor' ? 'selected' : ''}>Repartidor</option>
+                                <!--<option value="repartidor" ${u.grupo === 'repartidor' ? 'selected' : ''}>Repartidor</option>-->
                             </select>
                         </td>
                     </tr>
@@ -5155,6 +5287,131 @@ function guardarNuevoUsername() {
         }
     })
     .catch(err => console.error('Error:', err));
+}
+
+function guardarUsuarioShieldAjax() {
+    let username = document.getElementById('shUsername').value.trim();
+    let email = document.getElementById('shEmail').value.trim();
+    let password = document.getElementById('shPassword').value;
+    let grupo = document.getElementById('shGrupo').value;
+
+    if (!username || !email || !password || !grupo) {
+        alert('Por favor completa todos los campos.');
+        return;
+    }
+
+    let formData = new FormData();
+    formData.append('username', username);
+    formData.append('email', email);
+    formData.append('password', password);
+    formData.append('grupo', grupo);
+    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+
+    fetch('<?= base_url('/admin/permisos/crear-usuario') ?>', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            let modalEl = document.getElementById('modalNuevoUsuarioShield');
+            bootstrap.Modal.getInstance(modalEl).hide();
+            document.getElementById('formNuevoUsuarioShield').reset();
+            alert(data.message);
+            
+            // Recargar la tabla de usuarios automáticamente
+            if (typeof cargarUsuariosPermisos === 'function') {
+                cargarUsuariosPermisos();
+            }
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(err => console.error('Error:', err));
+}
+
+function cargarConfiguracionSistema() {
+    fetch('<?= base_url('/admin/configuracion/json') ?>', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            document.getElementById('inputCompanyNombre').value = data.company_name;
+        }
+    })
+    .catch(err => console.error('Error al cargar configuración:', err));
+}
+
+function guardarConfiguracionSistema() {
+    let nuevoNombre = document.getElementById('inputCompanyNombre').value.trim();
+    if (!nuevoNombre) {
+        alert('El nombre no puede estar vacío.');
+        return;
+    }
+
+    let formData = new FormData();
+    formData.append('company_name', nuevoNombre);
+    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+
+    fetch('<?= base_url('/admin/configuracion/guardar') ?>', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert(data.message);
+            // Actualizar visualmente en tiempo real sin recargar
+            document.getElementById('lblBrandNombre').innerText = data.company_name;
+            let tickBrand = document.getElementById('tickBrandNombre');
+            if (tickBrand) tickBrand.innerText = data.company_name;
+
+            let modalEl = document.getElementById('modalConfiguracionSistema');
+            bootstrap.Modal.getInstance(modalEl).hide();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(err => console.error('Error:', err));
+}
+
+function cambiarSucursal(sucursalId, nombreSucursal) {
+    // 1. Actualizar texto visual en el Navbar
+    document.getElementById('lblSucursalActiva').innerText = `Sucursal: ${nombreSucursal}`;
+
+    // 2. Cambiar marcas de check visuales en el menú
+    document.querySelectorAll('.dropdown-item i.fa-check').forEach(el => el.classList.add('d-none'));
+    let checkActivo = document.getElementById(`check-${sucursalId}`);
+    if (checkActivo) checkActivo.classList.remove('d-none');
+
+    // 3. Enviar petición por AJAX para guardar la sucursal activa en la Sesión de PHP
+    let formData = new FormData();
+    formData.append('sucursal_id', sucursalId);
+    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+
+    fetch('<?= base_url('/admin/sucursal/cambiar') ?>', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // 4. Refrescar los componentes de la vista actual con los datos de la nueva sucursal
+            if (typeof actualizarMetricasCards === 'function') actualizarMetricasCards();
+            if (typeof cargarInventarioGeneral === 'function') cargarInventarioGeneral();
+            if (typeof cargarReportesDinamicos === 'function') cargarReportesDinamicos();
+            
+            // Opcional: recargar la página completa para refrescar todas las tablas de PHP
+            location.reload(); 
+        } else {
+            alert('No se pudo cambiar de sucursal.');
+        }
+    })
+    .catch(err => console.error('Error al cambiar de sucursal:', err));
 }
 </script>
 </body>

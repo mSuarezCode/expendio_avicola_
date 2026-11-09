@@ -131,4 +131,56 @@ class PermisosController extends BaseController
             'message' => 'No se pudo actualizar el estado.'
         ]);
     }
+
+    public function crearUsuario()
+    {
+        // Opcional: Validar que el usuario actual sea superadmin o gerente
+        if (!auth()->user()->inGroup('superadmin', 'gerente')) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'No tienes permisos para registrar usuarios.']);
+        }
+
+        $username = trim($this->request->getPost('username'));
+        $email    = trim($this->request->getPost('email'));
+        $password = $this->request->getPost('password');
+        $grupo    = $this->request->getPost('grupo'); // 'gerente', 'repartidor', 'mostrador', etc.
+
+        if (empty($username) || empty($email) || empty($password) || empty($grupo)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Todos los campos son obligatorios.']);
+        }
+
+        $users = auth()->getProvider();
+
+        // Crear la entidad de usuario de Shield
+        $user = new \CodeIgniter\Shield\Entities\User([
+            'username' => $username,
+            'email'    => $email,
+            'password' => $password,
+        ]);
+
+        try {
+            // Guardar el usuario en la base de datos
+            $users->save($user);
+
+            // Volver a buscar el usuario recién creado para asignarle el grupo y activarlo
+            $nuevoUsuario = $users->findById($users->getInsertID());
+            
+            // Asignar el rol seleccionado
+            $nuevoUsuario->addGroup($grupo);
+
+            // Asegurar que la cuenta quede activa de inmediato
+            $nuevoUsuario->activate();
+
+            return $this->response->setJSON([
+                'status'  => 'success',
+                'message' => '¡Usuario registrado y activado con éxito!'
+            ]);
+
+        } catch (\Throwable $e) {
+            return $this->response->setJSON([
+                'status'  => 'error',
+                'message' => 'Error real: ' . $e->getMessage() // <--- Esto mostrará la falla exacta
+            ]);
+        }
+    }
+
 }

@@ -105,6 +105,7 @@ class ProduccionController extends BaseController
 
         // 3. Inserción en la Base de Datos con las nuevas columnas
         try {
+            $sucursalId = session()->get('sucursal_activa_id');
             $loteModel->insert([
                 'proveedor_id'     => $proveedorId,
                 'tipo_ave'         => $tipoAve,
@@ -114,7 +115,8 @@ class ProduccionController extends BaseController
                 'peso'             => $pesoTotal, // Referencial en gallinas, obligatorio en pollos
                 'costo_unitario'   => $costoUnitario,
                 'comprobante'      => $nombreArchivo, // Puede ser null si no se subió archivo
-                'fecha_recepcion'  => date('Y-m-d')
+                'fecha_recepcion'  => date('Y-m-d'),
+                'sucursal_id'  => $sucursalId // <-- ¡Importante guardar este campo!
             ]);
 
             return $this->response->setJSON([

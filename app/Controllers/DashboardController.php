@@ -8,44 +8,70 @@ use App\Models\ProcesoModel;
 use App\Models\ProductoModel;
 use App\Models\PedidoModel;
 use App\Models\CatalogoProductoModel;
+use App\Models\SucursalModel;
 
 class DashboardController extends BaseController
 {
     public function index()
     {
+        // Verificar si el usuario ya perdió la sesión
+        if (!auth()->loggedIn()) {
+            return redirect()->to('/login')->with('error', 'Tu sesión ha caducado. Por favor ingresa de nuevo.');
+        }
+        // Obtener la sucursal activa de la sesión (Por defecto la sucursal 1: Centro)
+        if (!session()->has('sucursal_activa_id')) {
+            session()->set('sucursal_activa_id', 1);
+            session()->set('nombre_sucursal_activa', 'Expendio Centro');
+        }
+        $sucursalActivaId = session()->get('sucursal_activa_id') ?? 1;
+        
         $hoy = date('Y-m-d');
         $loteModel = new LoteModel();
         $proveedorModel = new ProveedorModel();
         $procesoModel = new ProcesoModel();
         $productoModel = new ProductoModel();
         $pedidoModel = new PedidoModel();
+        $sucursalModel = new SucursalModel();
         
         $db = \Config\Database::connect(); // <-- Aseguramos la conexión
 
         // Recolectamos los datos de todas las tablas
-        $data['lotes']       = $loteModel->orderBy('id', 'DESC')->findAll();
+        $data['sucursales']      = $sucursalModel->getActivas();
+        $data['sucursalActiva']  = session()->get('nombre_sucursal_activa') ?? 'Expendio Centro';
+        $data['lotes']       = $loteModel->where('sucursal_id', $sucursalActivaId)->orderBy('id', 'DESC')->findAll();
         $data['proveedores'] = $proveedorModel->getActivos();
         
-        $data['procesos']    = $procesoModel->select('procesamiento_mermas.*, lotes.tipo_ave, proveedores.nombre_empresa')
-                                            ->join('lotes', 'lotes.id = procesamiento_mermas.lote_id')
-                                            ->join('proveedores', 'proveedores.id = lotes.proveedor_id')
-                                            ->orderBy('procesamiento_mermas.id', 'DESC')
-                                            ->findAll();
+        $data['procesos'] = $db->table('procesamiento_mermas')
+            ->select('procesamiento_mermas.*, CONCAT("Lote #", lotes.id) as lote_codigo, proveedores.nombre_empresa')
+            ->join('lotes', 'lotes.id = procesamiento_mermas.lote_id')
+            ->join('proveedores', 'proveedores.id = lotes.proveedor_id', 'left')
+            ->where('lotes.sucursal_id', $sucursalActivaId)
+            ->get()
+            ->getResultArray();
 
         // >>> AGREGAMOS ESTA LÍNEA PARA TRAER LOS DETALLES DE LOS CORTES <<<
-        $data['procesamientoDetalles'] = $db->table('procesamiento_detalles pd')
-                                            ->select('pd.*, cp.nombre as producto_nombre')
-                                            ->join('catalogo_productos cp', 'cp.id = pd.producto_id', 'left')
-                                            ->get()
-                                            ->getResultArray();
+        $data['procesamientoDetalles'] = $db->table('procesamiento_detalles')
+            ->select('procesamiento_detalles.*, catalogo_productos.nombre as producto_nombre, procesamiento_mermas.lote_id, lotes.sucursal_id')
+            ->join('catalogo_productos', 'catalogo_productos.id = procesamiento_detalles.producto_id', 'left')
+            ->join('procesamiento_mermas', 'procesamiento_mermas.id = procesamiento_detalles.proceso_id')
+            ->join('lotes', 'lotes.id = procesamiento_mermas.lote_id')
+            ->where('lotes.sucursal_id', $sucursalActivaId)
+            ->get()
+            ->getResultArray();
 
         $data['productos']   = $productoModel->orderBy('id', 'ASC')->findAll();
         // Traer solo los pedidos activos (oculta los archivados/cerrados de días anteriores)
-        $data['pedidos']     = $pedidoModel->where("DATE(created_at)", $hoy)
-                                            ->where("estado !=", "archivado")
-                                            ->orderBy('id', 'DESC')
-                                            ->findAll();
+        $data['pedidos']     = $pedidoModel->where('sucursal_id', $sucursalActivaId)
+                                        ->where("DATE(created_at)", $hoy)
+                                        ->where("estado !=", "archivado")
+                                        ->orderBy('id', 'DESC')
+                                        ->findAll();
         $data['lotesDisponibles'] = $loteModel->orderBy('id', 'DESC')->findAll();
+        // Obtener el nombre de la empresa configurado (por defecto EXPENDIO AVÍCOLA)
+        $setting = $db->table('settings')->where('class', 'App')->where('key', 'company_name')->get()->getRowArray();
+        $data['nombreEmpresa'] = $setting['value'] ?? 'EXPENDIO AVÍCOLA';
+
+        $data['sucursalActivaId'] = $sucursalActivaId;
 
         return view('dashboard/index', $data);
     }
@@ -197,27 +223,34 @@ class DashboardController extends BaseController
         //}
 
         $db = \Config\Database::connect();
+        $session = session();
+        $sucursalActivaId = $session->get('sucursal_activa_id') ?? 1;
 
         // 1. Obtenemos los productos del catálogo
         $productos = $db->table('catalogo_productos')->where('estado', 1)->get()->getResultArray();
 
-        // 2. Obtenemos el total vendido hoy por cada producto en 'detalle_pedidos'
+        // 2. Obtenemos el total vendido hoy por cada producto uniendo detalle_pedidos y pedidos con sucursal
         $ventasHoy = $db->table('detalle_pedidos')
-            ->select('nombre, SUM(cantidad) as total_vendido')
+            ->select('detalle_pedidos.nombre, SUM(detalle_pedidos.subtotal) as total_vendido')
             ->join('pedidos', 'pedidos.id = detalle_pedidos.pedido_id')
             ->where('DATE(pedidos.created_at)', date('Y-m-d'))
-            ->groupBy('nombre')
-            ->get()->getResultArray();
+            ->where('pedidos.sucursal_id', $sucursalActivaId)
+            ->groupBy('detalle_pedidos.nombre')
+            ->get()
+            ->getResultArray();
 
         $mapaVentas = [];
         foreach ($ventasHoy as $v) {
             $mapaVentas[$v['nombre']] = floatval($v['total_vendido']);
         }
 
-        // 3. Obtenemos el total procesado de cortes (desde procesamiento_detalles)
+        // 3. Obtenemos el total procesado de cortes filtrado por la sucursal activa
         $procesados = $db->table('procesamiento_detalles')
-            ->select('producto_id, SUM(cantidad_kg) as total_procesado')
-            ->groupBy('producto_id')
+            ->select('procesamiento_detalles.producto_id, SUM(procesamiento_detalles.cantidad_kg) as total_procesado')
+            ->join('procesamiento_mermas', 'procesamiento_mermas.id = procesamiento_detalles.proceso_id')
+            ->join('lotes', 'lotes.id = procesamiento_mermas.lote_id')
+            ->where('lotes.sucursal_id', $sucursalActivaId)
+            ->groupBy('procesamiento_detalles.producto_id')
             ->get()->getResultArray();
 
         $mapaProcesados = [];
@@ -226,8 +259,15 @@ class DashboardController extends BaseController
         }
 
         // 4. CÁLCULO DE AVES ENTERAS DISPONIBLES DESDE LOS LOTES Y DESPIECE
-        $lotesData = $db->table('lotes')->get()->getResultArray();
-        $procesosMermas = $db->table('procesamiento_mermas')->get()->getResultArray();
+        $lotesData = $db->table('lotes')
+            ->where('sucursal_id', $sucursalActivaId)
+            ->get()
+            ->getResultArray();
+
+        $loteIds = array_column($lotesData, 'id');
+        $procesosMermas = !empty($loteIds) 
+            ? $db->table('procesamiento_mermas')->whereIn('lote_id', $loteIds)->get()->getResultArray() 
+            : [];
         
         $mapaPiezasDestinadasPorLote = [];
         foreach ($procesosMermas as $pm) {
@@ -240,6 +280,7 @@ class DashboardController extends BaseController
             $tipo = strtolower($l['tipo_ave']);
             $piezasLote = intval($l['piezas']);
             $piezasDestinadas = $mapaPiezasDestinadasPorLote[$loteId] ?? 0;
+            
             // Piezas restantes del lote que quedan como enteros
             $piezasRestantesLote = max(0, $piezasLote - $piezasDestinadas);
             
@@ -351,44 +392,42 @@ class DashboardController extends BaseController
     {
         $db = \Config\Database::connect();
         $hoy = date('Y-m-d');
+        $session = session();
+        $sucursalActivaId = $session->get('sucursal_activa_id') ?? 1;
 
         // 1. Pendientes / Producción de HOY (excluyendo archivados)
         $pendientes = $db->table('pedidos')
-                        ->where('estado', 'pendiente')
-                        ->where("DATE(created_at)", $hoy)
-                        ->countAllResults();
+            ->where('estado', 'pendientes')
+            ->where('sucursal_id', $sucursalActivaId)
+            ->countAllResults();
 
         // 2. En Camino de HOY
         $enCamino = $db->table('pedidos')
-                    ->where('estado', 'en_camino')
-                    ->where("DATE(created_at)", $hoy)
-                    ->countAllResults();
+            ->where('estado', 'en_camino')
+            ->where('sucursal_id', $sucursalActivaId)
+            ->countAllResults();
 
         // 3. Entregados de HOY
         $entregados = $db->table('pedidos')
-                        ->where('estado', 'entregado')
-                        ->where("DATE(created_at)", $hoy)
-                        ->countAllResults();
+            ->where('estado', 'entregados')
+            ->where('sucursal_id', $sucursalActivaId)
+            ->countAllResults();
 
         // 4. Ventas en EFECTIVO de HOY (Excluyendo cancelados y archivados)
         $ventasEfectivo = $db->table('pedidos')
-                        ->where("DATE(created_at)", $hoy)
-                        ->where("estado !=", "cancelado")
-                        ->where("estado !=", "archivado") // 👈 Agregado para limpiar tras el cierre
-                        ->where("tipo_pago", "efectivo")
-                        ->selectSum('total')
-                        ->get()
-                        ->getRow()->total ?? 0;
+            ->where('tipo_pago', 'efectivo')
+            ->where('sucursal_id', $sucursalActivaId)
+            ->selectSum('total')
+            ->get()
+            ->getRowArray()['total'] ?? 0;
 
         // 5. Ventas por TRANSFERENCIA de HOY (Excluyendo cancelados y archivados)
         $ventasTransferencia = $db->table('pedidos')
-                        ->where("DATE(created_at)", $hoy)
-                        ->where("estado !=", "cancelado")
-                        ->where("estado !=", "archivado") // 👈 Agregado para limpiar tras el cierre
-                        ->where("tipo_pago", "transferencia")
-                        ->selectSum('total')
-                        ->get()
-                        ->getRow()->total ?? 0;
+            ->where('tipo_pago', 'transferencia')
+            ->where('sucursal_id', $sucursalActivaId)
+            ->selectSum('total')
+            ->get()
+            ->getRowArray()['total'] ?? 0;
 
         // 6. Venta Total de HOY (Suma de efectivo + transferencia activos)
         $ventaTotal = (float)$ventasEfectivo + (float)$ventasTransferencia;
@@ -551,68 +590,36 @@ class DashboardController extends BaseController
 
     public function getReportesJson()
     {
-        $db = \Config\Database::connect();
-        
-        // Capturar fechas de filtro (si no se envían, tomamos el mes actual)
-        $fInicio = $this->request->getGet('inicio') ?? date('Y-m-01');
-        $fFin = $this->request->getGet('fin') ?? date('Y-m-d');
+        $db = \Config\Database::connect(); // <-- Declaramos e inicializamos la conexión
+        $session = session();
+        $sucursalActivaId = $session->get('sucursal_activa_id') ?? 1;
 
-        // 1. Pestaña 1: Fluctuación Compra vs Venta (Comparativa de costo de lotes vs precio actual del catálogo)
-        $lotesRecientes = $db->table('lotes')
-                            ->select('lotes.id, lotes.tipo_ave, lotes.costo_unitario, lotes.fecha_recepcion, proveedores.nombre_empresa')
-                            ->join('proveedores', 'proveedores.id = lotes.proveedor_id', 'left')
-                            ->where("lotes.fecha_recepcion >=", $fInicio)
-                            ->where("lotes.fecha_recepcion <=", $fFin)
-                            ->get()
-                            ->getResultArray();
+        // Reportes de mermas (procesamiento_mermas relacionadas con lotes de la sucursal)
+        $mermas = $db->table('procesamiento_mermas')
+            ->select('procesamiento_mermas.*')
+            ->join('lotes', 'lotes.id = procesamiento_mermas.lote_id')
+            ->where('lotes.sucursal_id', $sucursalActivaId)
+            ->get()
+            ->getResultArray();
 
-        // 2. Pestaña 2: Volumen de Mermer y Rendimiento (Totales de la tabla procesamiento_mermas)
-        $totalesMerma = $db->table('procesamiento_mermas')
-                        ->selectSum('peso_inicial', 'total_inicial')
-                        ->selectSum('peso_util', 'total_util')
-                        ->selectSum('merma_kg', 'total_merma')
-                        ->where("fecha_proceso >=", $fInicio)
-                        ->where("fecha_proceso <=", $fFin)
-                        ->get()
-                        ->getRow();
+        // Fluctuación de lotes filtrada por sucursal
+        $lotesFluctuacion = $db->table('lotes')
+            ->where('sucursal_id', $sucursalActivaId)
+            ->get()
+            ->getResultArray();
 
-        /**
-         * 
-        // 2. Pestaña 2: Volumen de Merma y Rendimiento (Totales de la tabla procesos)
-        $totalesMerma = $db->table('procesos')
-                        ->selectSum('peso_inicial', 'total_inicial')
-                        ->selectSum('peso_util', 'total_util')
-                        ->selectSum('merma_kg', 'total_merma')
-                        ->where("fecha_proceso >=", $fInicio)
-                        ->where("fecha_proceso <=", $fFin)
-                        ->get()
-                        ->getRow();
-
-         */
-        $promedioMermaPorc = ($totalesMerma->total_inicial > 0) 
-            ? ($totalesMerma->total_merma / $totalesMerma->total_inicial) * 100 
-            : 0;
-
-        // 3. Pestaña 3: Zonas para Campañas (Concentrado de pedidos por colonia en el rango de fechas)
+        // Zonas/colonias agrupadas por pedidos de la sucursal activa
         $zonas = $db->table('pedidos')
-                    ->select('colonia, COUNT(id) as total_pedidos, SUM(total) as volumen_venta')
-                    ->where("DATE(created_at) >=", $fInicio)
-                    ->where("DATE(created_at) <=", $fFin)
-                    ->where('colonia !=', '')
-                    ->groupBy('colonia')
-                    ->orderBy('volumen_venta', 'DESC')
-                    ->get()
-                    ->getResultArray();
+            ->select('colonia as zona_entrega, COUNT(*) as total_pedidos, SUM(total) as volumen_venta')
+            ->where('sucursal_id', $sucursalActivaId)
+            ->groupBy('colonia')
+            ->get()
+            ->getResultArray();
 
         return $this->response->setJSON([
             'status' => 'success',
-            'fluctuacion' => $lotesRecientes,
-            'merma' => [
-                'inicial' => number_format((float)($totalesMerma->total_inicial ?? 0), 2),
-                'util' => number_format((float)($totalesMerma->total_util ?? 0), 2),
-                'merma_kg' => number_format((float)($totalesMerma->total_merma ?? 0), 2),
-                'merma_porc' => number_format((float)$promedioMermaPorc, 1)
-            ],
+            'mermas' => $mermas,
+            'lotes_fluctuacion' => $lotesFluctuacion,
             'zonas' => $zonas
         ]);
     }
@@ -1009,6 +1016,82 @@ class DashboardController extends BaseController
         return $this->response->setJSON([
             'status' => 'error', 
             'message' => 'No se pudo actualizar. Es posible que el nombre de usuario ya esté en uso.'
+        ]);
+    }
+    // Obtener la configuración actual de la empresa (puedes llamarlo al cargar el index)
+    public function getConfiguracionJson()
+    {
+        if (!auth()->user()->inGroup('superadmin')) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'No autorizado.']);
+        }
+
+        $db = \Config\Database::connect();
+        $setting = $db->table('settings')->where('class', 'App')->where('key', 'company_name')->get()->getRowArray();
+        
+        $nombreEmpresa = $setting['value'] ?? 'EXPENDIO AVÍCOLA';
+
+        return $this->response->setJSON([
+            'status' => 'success',
+            'company_name' => $nombreEmpresa
+        ]);
+    }
+
+    // Guardar la nueva configuración de la empresa (Exclusivo Superadmin)
+    public function guardarConfiguracion()
+    {
+        if (!auth()->user()->inGroup('superadmin')) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Acceso denegado. Solo el Superadministrador puede modificar la configuración.']);
+        }
+
+        $nuevoNombre = trim($this->request->getPost('company_name'));
+        if (empty($nuevoNombre)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'El nombre de la empresa no puede estar vacío.']);
+        }
+
+        $db = \Config\Database::connect();
+        
+        // Verificar si ya existe la llave en la tabla settings de Shield/CI4
+        $existente = $db->table('settings')->where('class', 'App')->where('key', 'company_name')->get()->getRowArray();
+
+        if ($existente) {
+            $db->table('settings')->where('class', 'App')->where('key', 'company_name')->update(['value' => $nuevoNombre]);
+        } else {
+            $db->table('settings')->insert([
+                'class' => 'App',
+                'key'   => 'company_name',
+                'value' => $nuevoNombre,
+                'type'  => 'string'
+            ]);
+        }
+
+        return $this->response->setJSON([
+            'status' => 'success',
+            'message' => '¡Configuración actualizada con éxito!',
+            'company_name' => $nuevoNombre
+        ]);
+    }
+    // Cambiar de sucursal activa (Exclusivo Superadmin)
+    public function cambiarSucursal()
+    {
+        if (!auth()->user()->inGroup('superadmin')) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'No autorizado.']);
+        }
+
+        $sucursalId = $this->request->getPost('sucursal_id');
+        $sucursalModel = new SucursalModel();
+        $sucursal = $sucursalModel->find($sucursalId);
+
+        if (!$sucursal) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Sucursal no encontrada.']);
+        }
+
+        // Guardar ID y Nombre en la Sesión
+        session()->set('sucursal_activa_id', $sucursal['id']);
+        session()->set('nombre_sucursal_activa', $sucursal['nombre_municipio']);
+
+        return $this->response->setJSON([
+            'status' => 'success',
+            'message' => 'Sucursal cambiada con éxito.'
         ]);
     }
 }
