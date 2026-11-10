@@ -15,7 +15,10 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
         <div class="container-fluid">
             <a class="navbar-brand fw-bold" href="#">
-                <i class="fa-solid fa-store text-warning me-2"></i> <span id="lblBrandNombre"><?= esc($nombreEmpresa ?? 'EXPENDIO AVÍCOLA') ?></span>
+                <i class="fa-solid fa-store text-warning me-2"></i> 
+                <span id="lblBrandNombre">
+                    <?= esc($nombreEmpresa ?? 'EXPENDIO AVÍCOLA') ?> - <span id="lblSucursalNavbar"><?= esc($sucursalActiva ?? 'Centro') ?></span>
+                </span>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -90,33 +93,31 @@
                                     </h6>
                                 </li>
                                 <li><hr class="dropdown-divider"></li>
-
-                                <!-- SECCIÓN DE SUCURSALES DENTRO DEL DESPLEGABLE -->
-                                <li>
-                                    <h6 class="dropdown-header text-warning fw-bold text-uppercase" style="font-size: 0.75rem; letter-spacing: 0.5px;">
-                                        <i class="fa-solid fa-location-dot me-1"></i> Sucursal Activa:
-                                    </h6>
-                                </li>
                                 
                                 <!-- Contenedor de la sucursal actual seleccionada -->
-                                <li class="px-3 py-1">
-                                    <span class="text-light small fw-semibold" id="lblSucursalActiva">
-                                        <?= esc($sucursalActiva ?? 'Expendio Centro') ?>
-                                    </span>
+                                <li>
+                                    <a class="dropdown-item" href="#" onclick="cambiarVista('sucursales', this); cargarSucursalesDirectorio();">
+                                        <i class="fa-solid fa-store me-2 text-warning"></i> Catálogo de Sucursales
+                                    </a>
                                 </li>
                                 <li><hr class="dropdown-divider"></li>
 
-                                <!-- Lista de opciones para cambiar de sucursal -->
+                                <!-- SECCIÓN DE SUCURSALES (SELECTOR UNIFICADO Y MODERNO) -->
                                 <li>
-                                    <h6 class="dropdown-header text-secondary" style="font-size: 0.7rem;">Cambiar de Sucursal:</h6>
+                                    <h6 class="dropdown-header text-warning fw-bold text-uppercase" style="font-size: 0.75rem; letter-spacing: 0.5px;">
+                                        <i class="fa-solid fa-location-dot me-1"></i> Sucursales:
+                                    </h6>
                                 </li>
+
                                 <?php if (!empty($sucursales)): ?>
                                     <?php foreach ($sucursales as $suc): ?>
                                         <?php $esActiva = (session()->get('sucursal_activa_id') == $suc['id']); ?>
                                         <li>
-                                            <a class="dropdown-item py-1 ps-4" href="#" onclick="cambiarSucursal(<?= $suc['id'] ?>, '<?= esc($suc['nombre_municipio'], 'js') ?>')">
-                                                <i class="fa-solid fa-check text-success me-2 <?= $esActiva ? '' : 'd-none' ?>" id="check-<?= $suc['id'] ?>"></i> 
-                                                <?= esc($suc['nombre_municipio']) ?>
+                                            <a class="dropdown-item py-2 d-flex align-items-center justify-content-between <?= $esActiva ? 'active bg-warning text-dark fw-bold' : '' ?>" 
+                                            href="#" 
+                                            onclick="cambiarSucursal(<?= $suc['id'] ?>, '<?= esc($suc['nombre_municipio'], 'js') ?>')">
+                                                <span><i class="fa-solid fa-store me-2"></i> <?= esc($suc['nombre_municipio']) ?></span>
+                                                <i class="fa-solid fa-check <?= $esActiva ? '' : 'd-none' ?>"></i>
                                             </a>
                                         </li>
                                     <?php endforeach; ?>
@@ -1042,6 +1043,36 @@
             </div>
         </div>
 
+        <!-- VISTA: GESTIÓN DE SUCURSALES -->
+        <div id="vista-sucursales" class="vista-secccion d-none">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="fa-solid fa-store text-warning me-2"></i> Gestión de Sucursales</h2>
+                <button class="btn btn-primary shadow-sm" data-bs-toggle="modal" data-bs-target="#modalNuevaSucursal" onclick="prepararModalSucursalNueva()">
+                    <i class="fa-solid fa-plus me-1"></i> Registrar Nueva Sucursal
+                </button>
+            </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th class="ps-3"># ID</th>
+                                    <th>Nombre / Municipio</th>
+                                    <th>Dirección</th>
+                                    <th>Teléfono</th>
+                                    <th class="text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaDirectorioSucursales">
+                                <tr><td colspan="5" class="text-center py-3 text-muted">Cargando sucursales...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
 
     </div>
 
@@ -2056,6 +2087,40 @@
         </div>
     </div>
 
+    <!-- Modal Registrar / Editar Sucursal -->
+    <div class="modal fade" id="modalNuevaSucursal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="tituloModalSucursal"><i class="fa-solid fa-store me-2"></i> Alta de Sucursal</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="formSucursalDirectorio">
+                    <input type="hidden" id="sucursalId" value="">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Nombre / Municipio</label>
+                            <input type="text" class="form-control" id="sucNombre" placeholder="Ej: Expendio Comalcalco" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Dirección</label>
+                            <textarea class="form-control" id="sucDireccion" rows="2" placeholder="Calle, número, colonia..."></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Teléfono</label>
+                            <input type="text" class="form-control" id="sucTelefono" placeholder="Ej: 9931234567">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-success" onclick="guardarSucursalAjax()">
+                            <i class="fa-solid fa-check me-1"></i> Guardar Sucursal
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
     <!-- Bootstrap 5 JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
@@ -3516,10 +3581,10 @@ function cargarReportesDinamicos() {
     .then(data => {
         if (data.status === 'success') {
             // 1. Tarjetas de Mermas y Despieces
-            document.getElementById('lblPesoInicial').innerText = (data.merma.inicial || '0.00') + ' Kg';
-            document.getElementById('lblPesoUtil').innerText = (data.merma.util || '0.00') + ' Kg';
-            document.getElementById('lblMermaKg').innerText = (data.merma.merma_kg || '0.00') + ' Kg';
-            document.getElementById('lblMermaPorc').innerText = (data.merma.merma_porc || '0.0') + '%';
+            document.getElementById('lblPesoInicial').innerText = (data.merma && data.merma.inicial ? data.merma.inicial : '0.00') + ' Kg';
+            document.getElementById('lblPesoUtil').innerText = (data.merma && data.merma.util ? data.merma.util : '0.00') + ' Kg';
+            document.getElementById('lblMermaKg').innerText = (data.merma && data.merma.merma_kg ? data.merma.merma_kg : '0.00') + ' Kg';
+            document.getElementById('lblMermaPorc').innerText = (data.merma && data.merma.merma_porc ? data.merma.merma_porc : '0.0') + '%';
 
             // 2. Tabla de Fluctuación de Lotes
             let tbodyLotes = document.querySelector('#tablaLotesReporte tbody');
@@ -5379,15 +5444,11 @@ function guardarConfiguracionSistema() {
 }
 
 function cambiarSucursal(sucursalId, nombreSucursal) {
-    // 1. Actualizar texto visual en el Navbar
-    document.getElementById('lblSucursalActiva').innerText = `Sucursal: ${nombreSucursal}`;
+    // 1. Actualizar texto visual en el Navbar de forma dinámica
+    let lblNav = document.getElementById('lblSucursalNavbar');
+    if (lblNav) lblNav.innerText = nombreSucursal;
 
-    // 2. Cambiar marcas de check visuales en el menú
-    document.querySelectorAll('.dropdown-item i.fa-check').forEach(el => el.classList.add('d-none'));
-    let checkActivo = document.getElementById(`check-${sucursalId}`);
-    if (checkActivo) checkActivo.classList.remove('d-none');
-
-    // 3. Enviar petición por AJAX para guardar la sucursal activa en la Sesión de PHP
+    // 2. Enviar petición por AJAX para actualizar la sesión en PHP
     let formData = new FormData();
     formData.append('sucursal_id', sucursalId);
     formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
@@ -5400,18 +5461,156 @@ function cambiarSucursal(sucursalId, nombreSucursal) {
     .then(res => res.json())
     .then(data => {
         if (data.status === 'success') {
-            // 4. Refrescar los componentes de la vista actual con los datos de la nueva sucursal
+            // Recargar datos y tablas operativas de la sucursal activa
             if (typeof actualizarMetricasCards === 'function') actualizarMetricasCards();
             if (typeof cargarInventarioGeneral === 'function') cargarInventarioGeneral();
             if (typeof cargarReportesDinamicos === 'function') cargarReportesDinamicos();
             
-            // Opcional: recargar la página completa para refrescar todas las tablas de PHP
             location.reload(); 
         } else {
             alert('No se pudo cambiar de sucursal.');
         }
     })
     .catch(err => console.error('Error al cambiar de sucursal:', err));
+}
+
+let cacheSucursalesDirectorio = [];
+
+// 1. Cargar la tabla del directorio de sucursales
+function cargarSucursalesDirectorio() {
+    let tbody = document.getElementById('tablaDirectorioSucursales');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-3 text-muted"><i class="fa-solid fa-spinner fa-spin me-1"></i> Cargando sucursales...</td></tr>';
+
+    fetch('<?= base_url('/admin/sucursales/json') ?>', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(res => res.json())
+    .then(sucursales => {
+        cacheSucursalesDirectorio = sucursales || [];
+        let html = '';
+
+        if (!sucursales || sucursales.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-3 text-muted">No hay sucursales registradas.</td></tr>';
+            return;
+        }
+
+        sucursales.forEach(s => {
+            let badgeEstado = s.estado == 1 ? '<span class="badge bg-success">Activa</span>' : '<span class="badge bg-danger">Inactiva</span>';
+            
+            html += `
+            <tr id="fila_sucursal_${s.id}">
+                <td class="ps-3">#${s.id}</td>
+                <td class="fw-bold"><i class="fa-solid fa-store text-warning me-2"></i>${s.nombre_municipio} ${badgeEstado}</td>
+                <td><small>${s.direccion || 'Sin dirección registrada'}</small></td>
+                <td><i class="fa-solid fa-phone text-success me-1"></i>${s.telefono || 'N/D'}</td>
+                <td class="text-center">
+                    <button class="btn btn-sm btn-outline-primary me-1" onclick="editarSucursalDirectorio(${s.id})" title="Editar datos de sucursal">
+                        <i class="fa-solid fa-pen-to-square"></i> Editar
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="eliminarSucursalAjax(${s.id})" title="Dar de baja">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+            `;
+        });
+        tbody.innerHTML = html;
+    })
+    .catch(err => {
+        console.error('Error al cargar sucursales:', err);
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Error al cargar datos desde el servidor.</td></tr>';
+    });
+}
+
+// 2. Limpiar modal para crear una nueva sucursal
+function prepararModalSucursalNueva() {
+    document.getElementById('sucursalId').value = '';
+    document.getElementById('formSucursalDirectorio').reset();
+    document.getElementById('tituloModalSucursal').innerHTML = '<i class="fa-solid fa-store me-2"></i> Alta de Sucursal';
+}
+
+// 3. Llenar modal para editar sucursal existente
+function editarSucursalDirectorio(id) {
+    let s = cacheSucursalesDirectorio.find(x => parseInt(x.id) === parseInt(id));
+    if (!s) return;
+
+    document.getElementById('sucursalId').value = s.id;
+    document.getElementById('sucNombre').value = s.nombre_municipio || '';
+    document.getElementById('sucDireccion').value = s.direccion || '';
+    document.getElementById('sucTelefono').value = s.telefono || '';
+
+    document.getElementById('tituloModalSucursal').innerHTML = `<i class="fa-solid fa-pen-to-square me-2"></i> Editar Sucursal #${s.id}`;
+
+    let modalEl = document.getElementById('modalNuevaSucursal');
+    let modalInstance = new bootstrap.Modal(modalEl);
+    modalInstance.show();
+}
+
+// 4. Guardar o Actualizar sucursal por AJAX
+function guardarSucursalAjax() {
+    let id        = document.getElementById('sucursalId').value;
+    let nombre    = document.getElementById('sucNombre').value.trim();
+    let direccion = document.getElementById('sucDireccion').value.trim();
+    let telefono  = document.getElementById('sucTelefono').value.trim();
+
+    if (!nombre) {
+        alert('Por favor ingresa el nombre o municipio de la sucursal.');
+        return;
+    }
+
+    let formData = new FormData();
+    if (id) formData.append('id', id);
+    formData.append('nombre_municipio', nombre);
+    formData.append('direccion', direccion);
+    formData.append('telefono', telefono);
+    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+
+    fetch('<?= base_url('/admin/sucursales/guardar') ?>', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            let modalEl = document.getElementById('modalNuevaSucursal');
+            let modalInstance = bootstrap.Modal.getInstance(modalEl);
+            if (modalInstance) modalInstance.hide();
+
+            prepararModalSucursalNueva();
+            alert(data.message);
+            cargarSucursalesDirectorio(); // Recargar la tabla
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(err => {
+        console.error('Error:', err);
+        alert('Ocurrió un error al procesar la solicitud.');
+    });
+}
+
+// 5. Eliminar / Dar de baja sucursal por AJAX
+function eliminarSucursalAjax(id) {
+    if (!confirm('¿Estás seguro de dar de baja esta sucursal?')) return;
+
+    fetch(`<?= base_url('/admin/sucursales/eliminar') ?>/${id}`, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ '<?= csrf_token() ?>': '<?= csrf_hash() ?>' })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert(data.message);
+            cargarSucursalesDirectorio();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(err => console.error('Error:', err));
 }
 </script>
 </body>

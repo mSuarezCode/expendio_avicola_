@@ -100,3 +100,8 @@ $routes->group('admin/configuracion', ['filter' => 'group:superadmin'], function
 });
 
 $routes->post('/admin/sucursal/cambiar', 'DashboardController::cambiarSucursal', ['filter' => 'group:superadmin']);
+
+// RUTAS PARA EL MÓDULO DE SUCURSALES
+$routes->get('/admin/sucursales/json', 'DashboardController::getSucursalesJson');
+$routes->post('/admin/sucursales/guardar', 'DashboardController::guardarSucursal');
+$routes->post('/admin/sucursales/eliminar/(:num)', 'DashboardController::eliminarSucursal/$1');

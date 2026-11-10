@@ -21,7 +21,7 @@ class DashboardController extends BaseController
         // Obtener la sucursal activa de la sesión (Por defecto la sucursal 1: Centro)
         if (!session()->has('sucursal_activa_id')) {
             session()->set('sucursal_activa_id', 1);
-            session()->set('nombre_sucursal_activa', 'Expendio Centro');
+            session()->set('nombre_sucursal_activa', 'Centro');
         }
         $sucursalActivaId = session()->get('sucursal_activa_id') ?? 1;
         
@@ -112,6 +112,8 @@ class DashboardController extends BaseController
 
     public function guardarPedido()
     {
+        $session = \Config\Services::session();
+        $sucursalActivaId = $session->get('sucursal_activa_id');
         $db = \Config\Database::connect();
         $pedidoModel = new \App\Models\PedidoModel();
         $clienteModel = new \App\Models\ClienteModel();
@@ -152,7 +154,9 @@ class DashboardController extends BaseController
         // 2. GUARDAR EL PEDIDO VINCULADO AL CLIENTE
         $db->transStart();
 
+
         $pedidoModel->insert([
+            'sucursal_id'  => $sucursalActivaId, // <--- ¡Añade esta línea para vincularlo a la sucursal activa!
             'cliente_id'   => $clienteId,
             'cliente'      => $clienteNombre,
             'telefono'     => $telefono,
@@ -191,7 +195,8 @@ class DashboardController extends BaseController
             'status' => 'success',
             'folio'  => $pedidoId,
             'message' => '¡Pedido registrado con éxito!',
-            'tipoPago' => $tipoPago
+            'tipoPago' => $tipoPago,
+            'sucursal_id' => $sucursalActivaId
         ]);
     }
 
@@ -397,26 +402,30 @@ class DashboardController extends BaseController
 
         // 1. Pendientes / Producción de HOY (excluyendo archivados)
         $pendientes = $db->table('pedidos')
-            ->where('estado', 'pendientes')
+            ->where('estado', 'pendiente') // <--- Singular
             ->where('sucursal_id', $sucursalActivaId)
+            ->where("DATE(created_at)", $hoy)
             ->countAllResults();
 
         // 2. En Camino de HOY
         $enCamino = $db->table('pedidos')
             ->where('estado', 'en_camino')
             ->where('sucursal_id', $sucursalActivaId)
+            ->where("DATE(created_at)", $hoy)
             ->countAllResults();
 
         // 3. Entregados de HOY
         $entregados = $db->table('pedidos')
-            ->where('estado', 'entregados')
+            ->where('estado', 'entregado')
             ->where('sucursal_id', $sucursalActivaId)
+            ->where("DATE(created_at)", $hoy)
             ->countAllResults();
 
         // 4. Ventas en EFECTIVO de HOY (Excluyendo cancelados y archivados)
         $ventasEfectivo = $db->table('pedidos')
             ->where('tipo_pago', 'efectivo')
             ->where('sucursal_id', $sucursalActivaId)
+            ->where("DATE(created_at)", $hoy)
             ->selectSum('total')
             ->get()
             ->getRowArray()['total'] ?? 0;
@@ -425,6 +434,7 @@ class DashboardController extends BaseController
         $ventasTransferencia = $db->table('pedidos')
             ->where('tipo_pago', 'transferencia')
             ->where('sucursal_id', $sucursalActivaId)
+            ->where("DATE(created_at)", $hoy)
             ->selectSum('total')
             ->get()
             ->getRowArray()['total'] ?? 0;
@@ -1093,5 +1103,67 @@ class DashboardController extends BaseController
             'status' => 'success',
             'message' => 'Sucursal cambiada con éxito.'
         ]);
+    }
+    
+    // Obtener todas las sucursales activas en formato JSON
+    public function getSucursalesJson()
+    {
+        $sucursalModel = new \App\Models\SucursalModel();
+        $sucursales = $sucursalModel->findAll();
+
+        return $this->response->setJSON($sucursales);
+    }
+
+    // Guardar o Actualizar Sucursal vía AJAX
+    public function guardarSucursal()
+    {
+        $id = $this->request->getPost('id');
+        $nombre = trim($this->request->getPost('nombre_municipio'));
+        $direccion = trim($this->request->getPost('direccion'));
+        $telefono = trim($this->request->getPost('telefono'));
+
+        if (empty($nombre)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'El nombre/municipio es obligatorio.']);
+        }
+
+        $sucursalModel = new \App\Models\SucursalModel();
+        $data = [
+            'nombre_municipio' => $nombre,
+            'direccion'        => $direccion,
+            'telefono'         => $telefono,
+            'estado'           => 1
+        ];
+
+        try {
+            if ($id) {
+                $sucursalModel->update($id, $data);
+                $msg = '¡Sucursal actualizada con éxito!';
+            } else {
+                $sucursalModel->insert($data);
+                $msg = '¡Sucursal registrada con éxito!';
+            }
+
+            return $this->response->setJSON([
+                'status'  => 'success',
+                'message' => $msg
+            ]);
+        } catch (\Exception $e) {
+            return $this->response->setJSON([
+                'status'  => 'error',
+                'message' => 'Error en base de datos: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    // Dar de baja o eliminar sucursal
+    public function eliminarSucursal($id)
+    {
+        $sucursalModel = new \App\Models\SucursalModel();
+
+        if ($sucursalModel->update($id, ['estado' => 0])) {
+            return $this->response->setJSON(['status' => 'success', 'message' => 'Sucursal desactivada con éxito.']);
+        }
+
+        return $this->response->setJSON(['status' => 'error', 'message' => 'No se pudo eliminar la sucursal.']);
     }
 }
