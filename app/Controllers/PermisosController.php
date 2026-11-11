@@ -91,6 +91,8 @@ class PermisosController extends BaseController
                 'username'     => $u->username,
                 'email'        => $u->getEmail(),
                 'grupo'        => $grupoActual,
+                'active'       => $u->active,
+                'sucursal_id'  => $u->sucursal_id ?? null,
                 'grupo_titulo' => ucfirst($grupoActual)
             ];
         }
@@ -143,6 +145,7 @@ class PermisosController extends BaseController
         $email    = trim($this->request->getPost('email'));
         $password = $this->request->getPost('password');
         $grupo    = $this->request->getPost('grupo'); // 'gerente', 'repartidor', 'mostrador', etc.
+        $sucursalId = $this->request->getPost('sucursal_id');
 
         if (empty($username) || empty($email) || empty($password) || empty($grupo)) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'Todos los campos son obligatorios.']);
@@ -155,6 +158,7 @@ class PermisosController extends BaseController
             'username' => $username,
             'email'    => $email,
             'password' => $password,
+            'sucursalId' => $sucursalId,
         ]);
 
         try {
@@ -182,5 +186,75 @@ class PermisosController extends BaseController
             ]);
         }
     }
+
+    public function actualizarUsuarioCompleto()
+    {
+        if (!auth()->user()->inGroup('superadmin')) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'No autorizado.']);
+        }
+
+        $userId        = $this->request->getPost('user_id');
+        $nuevoUsername = trim($this->request->getPost('username'));
+        $nuevoEmail    = trim($this->request->getPost('email'));
+        $nuevoPassword = $this->request->getPost('password');
+        $nuevoGrupo    = $this->request->getPost('grupo');
+        $nuevoEstado   = (int) $this->request->getPost('active'); // 1 o 0
+        $sucursalId = $this->request->getPost('sucursal_id');
+
+        if (!$userId || empty($nuevoUsername) || empty($nuevoEmail)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'El ID, usuario y correo son obligatorios.']);
+        }
+
+        $usersModel = new \App\Models\UserModel();
+        $user = $usersModel->find($userId);
+
+        if (!$user) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Usuario no encontrado.']);
+        }
+
+        $db = \Config\Database::connect();
+        $db->transStart();
+
+        // 1. Actualizar Username y Estado (active) en la tabla 'users'
+        $user->username = $nuevoUsername;
+        $user->active   = $nuevoEstado;
+        $user->sucursal_id   = $sucursalId;
+        $usersModel->save($user);
+
+        // 2. Actualizar Email y Contraseña opcional en 'auth_identities'
+        $identityData = ['secret' => $nuevoEmail];
+        if (!empty($nuevoPassword)) {
+            if (strlen($nuevoPassword) < 8) {
+                return $this->response->setJSON(['status' => 'error', 'message' => 'La contraseña debe tener al menos 8 caracteres.']);
+            }
+            $identityData['secret2'] = service('passwords')->hash($nuevoPassword);
+        }
+
+        $db->table('auth_identities')
+            ->where('user_id', $userId)
+            ->where('type', 'email_password')
+            ->update($identityData);
+
+        // 3. Actualizar Rol / Grupo
+        $gruposActuales = $user->getGroups();
+        foreach ($gruposActuales as $g) {
+            $user->removeGroup($g);
+        }
+        if ($nuevoGrupo) {
+            $user->addGroup($nuevoGrupo);
+        }
+
+        $db->transComplete();
+
+        if ($db->transStatus() === false) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Error al actualizar los datos.']);
+        }
+
+        return $this->response->setJSON([
+            'status' => 'success',
+            'message' => '¡Usuario actualizado correctamente!'
+        ]);
+    }
+
 
 }

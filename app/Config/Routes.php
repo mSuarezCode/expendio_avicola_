@@ -6,7 +6,7 @@ use CodeIgniter\Router\RouteCollection;
 //$routes->get('/', 'Home::index');
 
 $routes->get('/', 'DashboardController::index');
-$routes->get('/dashboard', 'DashboardController::index');
+$routes->get('/dashboard', 'DashboardController::index', ['filter' => 'session']);
 $routes->post('/pedidos/guardar', 'DashboardController::guardarPedido');
 
 service('auth')->routes($routes);
@@ -105,3 +105,4 @@ $routes->post('/admin/sucursal/cambiar', 'DashboardController::cambiarSucursal',
 $routes->get('/admin/sucursales/json', 'DashboardController::getSucursalesJson');
 $routes->post('/admin/sucursales/guardar', 'DashboardController::guardarSucursal');
 $routes->post('/admin/sucursales/eliminar/(:num)', 'DashboardController::eliminarSucursal/$1');
+$routes->post('/admin/permisos/actualizar-usuario', 'PermisosController::actualizarUsuarioCompleto', ['filter' => 'group:superadmin']);

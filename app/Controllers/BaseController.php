@@ -30,16 +30,23 @@ abstract class BaseController extends Controller
     /**
      * @return void
      */
-    public function initController(RequestInterface $request, ResponseInterface $response, LoggerInterface $logger)
+    public function initController(\CodeIgniter\HTTP\RequestInterface $request, \CodeIgniter\HTTP\ResponseInterface $response, \Psr\Log\LoggerInterface $logger)
     {
-        // Load here all helpers you want to be available in your controllers that extend BaseController.
-        // Caution: Do not put the this below the parent::initController() call below.
-        // $this->helpers = ['form', 'url'];
-
-        // Caution: Do not edit this line.
         parent::initController($request, $response, $logger);
 
-        // Preload any models, libraries, etc, here.
-        // $this->session = service('session');
+        $usuario = auth()->user();
+        if ($usuario) {
+            // Si no es superadmin y tiene una sucursal asignada, fijamos su sucursal activa automáticamente
+            if (!$usuario->inGroup('superadmin') && !empty($usuario->sucursal_id)) {
+                session()->set('sucursal_activa_id', $usuario->sucursal_id);
+                
+                // Opcional: Obtener el nombre para la vista
+                $sucursalModel = new \App\Models\SucursalModel();
+                $suc = $sucursalModel->find($usuario->sucursal_id);
+                if ($suc) {
+                    session()->set('sucursal_activa_nombre', $suc['nombre_municipio']);
+                }
+            }
+        }
     }
 }

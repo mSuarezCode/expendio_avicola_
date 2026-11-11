@@ -2121,6 +2121,68 @@
             </div>
         </div>
     </div>
+
+    <!-- Modal Editar Usuario Completo -->
+    <div class="modal fade" id="modalEditarUsuarioCompleto" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content shadow">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title fw-bold" id="tituloEditUser"><i class="fa-solid fa-user-pen me-2 text-warning"></i> Editar Usuario</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="formEditarUsuarioCompleto">
+                    <input type="hidden" id="editUserId">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Nombre de Usuario</label>
+                            <input type="text" class="form-control" id="editUsername" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Correo Electrónico</label>
+                            <input type="email" class="form-control" id="editEmail" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Nueva Contraseña <span class="text-muted fw-normal">(Dejar en blanco si no deseas cambiarla)</span></label>
+                            <input type="password" class="form-control" id="editPassword" placeholder="••••••••">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Rol / Grupo Asignado</label>
+                            <select class="form-select" id="editGrupo" required>
+                                <option value="superadmin">Super Admin</option>
+                                <option value="gerente">Gerente</option>
+                                <option value="mostrador">Mostrador</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Estado del Usuario</label>
+                            <select class="form-select" id="editActive" required>
+                                <option value="1">Activo (Permitir acceso)</option>
+                                <option value="0">Inactivo (Desactivar acceso)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Sucursal Asignada</label>
+                            <select class="form-select" id="editSucursalId" name="sucursal_id">
+                                <option value="">-- Seleccionar Sucursal --</option>
+                                <?php if (!empty($sucursales)): ?>
+                                    <?php foreach ($sucursales as $s): ?>
+                                        <option value="<?= $s['id'] ?>"><?= esc($s['nombre_municipio']) ?></option>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </select>
+                            <small class="text-muted">Si es superadmin, puede dejarse sin sucursal fija.</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-success fw-bold" onclick="guardarEdicionUsuarioAjax()">
+                            <i class="fa-solid fa-check me-1"></i> Guardar Cambios
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
     <!-- Bootstrap 5 JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
@@ -5612,6 +5674,116 @@ function eliminarSucursalAjax(id) {
     })
     .catch(err => console.error('Error:', err));
 }
+
+function cargarUsuariosPermisos() {
+    let tbody = document.getElementById('tablaUsuariosShield');
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-3 text-muted"><i class="fa-solid fa-spinner fa-spin me-1"></i> Cargando usuarios y roles...</td></tr>';
+
+    fetch('<?= base_url('/admin/permisos/usuarios-json') ?>', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success' && data.usuarios.length > 0) {
+            window.cacheUsuariosList = data.usuarios; // Guardamos en caché para editar fácil
+            let html = '';
+            data.usuarios.forEach(u => {
+                let badgeEstado = u.active == 1 
+                ? '<span class="badge bg-success">Activo</span>' 
+                : '<span class="badge bg-danger">Inactivo</span>';
+                let badgeRol = 'bg-secondary';
+                if (u.grupo === 'superadmin') badgeRol = 'bg-danger';
+                else if (u.grupo === 'gerente') badgeRol = 'bg-warning text-dark';
+                else if (u.grupo === 'mostrador') badgeRol = 'bg-primary';
+
+                html += `
+                    <tr>
+                        <td class="ps-3">#${u.id}</td>
+                        <td class="fw-bold">
+                            <i class="fa-solid fa-user text-secondary me-1"></i> ${u.username} <br>
+                            <small class="text-muted">${u.email}</small>
+                        </td>
+                        <td>${badgeEstado}</td>
+                        <td class="text-center">
+                            <span class="badge ${badgeRol} fs-6">${u.grupo_titulo || u.grupo || 'Sin Rol'}</span>
+                        </td>
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-outline-primary fw-bold" onclick="abrirModalEditarUsuario(${u.id})">
+                                <i class="fa-solid fa-user-pen me-1"></i> Editar Completo
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        } else {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-3 text-muted">No hay usuarios registrados.</td></tr>';
+        }
+    })
+    .catch(err => console.error('Error al cargar usuarios:', err));
+}
+
+function abrirModalEditarUsuario(id) {
+    let usuario = window.cacheUsuariosList.find(x => parseInt(x.id) === parseInt(id));
+    if (!usuario) return;
+    console.log(usuario);
+    document.getElementById('editUserId').value = usuario.id;
+    document.getElementById('editUsername').value = usuario.username || '';
+    document.getElementById('editEmail').value = usuario.email || '';
+    document.getElementById('editPassword').value = '';
+    document.getElementById('editGrupo').value = usuario.grupo || 'mostrador';
+    document.getElementById('editActive').value = usuario.active !== undefined ? usuario.active : 1; // Cargar estado actual
+
+    document.getElementById('tituloEditUser').innerHTML = `<i class="fa-solid fa-user-pen me-2 text-warning"></i> Editar Usuario: ${usuario.username}`;
+
+    let modal = new bootstrap.Modal(document.getElementById('modalEditarUsuarioCompleto'));
+    modal.show();
+}
+
+function guardarEdicionUsuarioAjax() {
+    let id       = document.getElementById('editUserId').value;
+    let username = document.getElementById('editUsername').value.trim();
+    let email    = document.getElementById('editEmail').value.trim();
+    let password = document.getElementById('editPassword').value;
+    let grupo    = document.getElementById('editGrupo').value;
+    let active   = document.getElementById('editActive').value;
+    let sucursalId = document.getElementById('editSucursalId').value;
+
+
+    if (!username || !email) {
+        alert('El nombre de usuario y el correo son obligatorios.');
+        return;
+    }
+
+    let formData = new FormData();
+    formData.append('user_id', id);
+    formData.append('username', username);
+    formData.append('email', email);
+    formData.append('password', password);
+    formData.append('grupo', grupo);
+    formData.append('active', active); // Enviar el estado seleccionado
+    formData.append('sucursal_id', sucursalId);
+    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+
+    fetch('<?= base_url('/admin/permisos/actualizar-usuario') ?>', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            let modalEl = document.getElementById('modalEditarUsuarioCompleto');
+            bootstrap.Modal.getInstance(modalEl).hide();
+            alert(data.message);
+            cargarUsuariosPermisos(); // Refrescar tabla
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(err => console.error('Error al actualizar usuario:', err));
+}
+document.getElementById('editSucursalId').value = usuario.sucursal_id || '';
 </script>
 </body>
 </html>

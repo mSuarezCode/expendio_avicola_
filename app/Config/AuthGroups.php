@@ -59,7 +59,11 @@ class AuthGroups extends ShieldAuthGroups
         ],
         'gerente' => [
             'title'       => 'User',
-            'description' => 'General users of the site. Often customers.',
+            'description' => 'Gerente users of the site. Often customers.',
+        ],
+        'mostrador' => [
+            'title'       => 'User',
+            'description' => 'Mostrador users of the site. Often customers.',
         ],
         'beta' => [
             'title'       => 'Beta User',
@@ -120,6 +124,7 @@ class AuthGroups extends ShieldAuthGroups
         ],
         'user' => [],
         'gerente' => [],
+        'mostrador' => [],
         'beta' => [
             'beta.access',
         ],

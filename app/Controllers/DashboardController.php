@@ -14,17 +14,44 @@ class DashboardController extends BaseController
 {
     public function index()
     {
-        // Verificar si el usuario ya perdió la sesión
+        // 1. Verificar si el usuario ya perdió la sesión
         if (!auth()->loggedIn()) {
             return redirect()->to('/login')->with('error', 'Tu sesión ha caducado. Por favor ingresa de nuevo.');
         }
-        // Obtener la sucursal activa de la sesión (Por defecto la sucursal 1: Centro)
-        if (!session()->has('sucursal_activa_id')) {
-            session()->set('sucursal_activa_id', 1);
-            session()->set('nombre_sucursal_activa', 'Centro');
+
+        $usuario = auth()->user();
+
+        if ($usuario) {
+            // Verificamos si la propiedad active es diferente de 1 (o true)
+            if ((int) $usuario->active !== 1) {
+                
+                // Destruimos la sesión actual por seguridad
+                auth()->logout();
+                return redirect()->to('/login')->with('error', 'Tu cuenta ha sido desactivada por el administrador.');
+            }
         }
-        $sucursalActivaId = session()->get('sucursal_activa_id') ?? 1;
-        
+
+        // 2. Si no tiene sucursal activa en sesión, la determinamos
+        if (!session()->has('sucursal_activa_id')) {
+            // Si el usuario tiene una sucursal asignada en su perfil, la usamos
+            if ($usuario && !empty($usuario->sucursal_id)) {
+                $sucursalId = $usuario->sucursal_id;
+            } else {
+                // Si es superadmin o no tiene ninguna asignada, por defecto usamos la 1 (Centro)
+                $sucursalId = 1;
+            }
+
+            // Buscamos el nombre de la sucursal para la sesión
+            $sucursalModel = new \App\Models\SucursalModel();
+            $suc = $sucursalModel->find($sucursalId);
+            $nombreSuc = $suc ? $suc['nombre_municipio'] : 'Centro';
+
+            session()->set('sucursal_activa_id', $sucursalId);
+            session()->set('nombre_sucursal_activa', $nombreSuc);
+        }
+
+        $sucursalActivaId = session()->get('sucursal_activa_id');
+
         $hoy = date('Y-m-d');
         $loteModel = new LoteModel();
         $proveedorModel = new ProveedorModel();
@@ -1104,7 +1131,7 @@ class DashboardController extends BaseController
             'message' => 'Sucursal cambiada con éxito.'
         ]);
     }
-    
+
     // Obtener todas las sucursales activas en formato JSON
     public function getSucursalesJson()
     {
