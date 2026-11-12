@@ -2154,6 +2154,11 @@
                             </select>
                         </div>
                         <div class="mb-3">
+                            <label class="form-label fw-bold">NIP de Autorización (4 Dígitos)</label>
+                            <input type="password" class="form-control text-center fw-bold fs-5" id="editNip" name="nip" placeholder="••••" maxlength="4" pattern="[0-9]*" inputmode="numeric">
+                            <small class="text-muted">Utilizado para autorizar descuentos y operaciones especiales en mostrador.</small>
+                        </div>
+                        <div class="mb-3">
                             <label class="form-label fw-bold">Estado del Usuario</label>
                             <select class="form-select" id="editActive" required>
                                 <option value="1">Activo (Permitir acceso)</option>
@@ -4892,23 +4897,44 @@ function autorizarDescuentoNIP() {
 
 // 2. Verificar el NIP ingresado de forma oculta
 function verificarNipSeguridad() {
-    let nipIngresado = document.getElementById('inputNipSecreto').value;
+    let nipIngresado = document.getElementById('inputNipSecreto').value.trim();
     
-    if (nipIngresado === NIP_GERENTE) {
-        descuentoAutorizado = true;
-        
-        // Ocultar el modal de NIP
-        let modalEl = document.getElementById('modalNipSeguridad');
-        let modalInstance = bootstrap.Modal.getInstance(modalEl);
-        if (modalInstance) modalInstance.hide();
-
-        alert("✅ ¡Descuento autorizado con éxito!");
-        renderizarDetallePedido(); // Habilita las casillas en la tabla
-    } else {
-        alert("❌ NIP incorrecto. Inténtalo de nuevo.");
-        document.getElementById('inputNipSecreto').value = '';
-        document.getElementById('inputNipSecreto').focus();
+    if (nipIngresado.length !== 4) {
+        alert("⚠️ El NIP debe ser de exactamente 4 dígitos.");
+        return;
     }
+
+    let formData = new FormData();
+    formData.append('nip', nipIngresado);
+    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+
+    fetch('<?= base_url('/auth/verificar-nip') ?>', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            descuentoAutorizado = true;
+            
+            // Ocultar el modal de NIP
+            let modalEl = document.getElementById('modalNipSeguridad');
+            let modalInstance = bootstrap.Modal.getInstance(modalEl);
+            if (modalInstance) modalInstance.hide();
+
+            alert(`✅ ¡Descuento autorizado por ${data.usuario}!`);
+            renderizarDetallePedido(); // Habilita la edición de precios
+        } else {
+            alert(`❌ ${data.message}`);
+            document.getElementById('inputNipSecreto').value = '';
+            document.getElementById('inputNipSecreto').focus();
+        }
+    })
+    .catch(err => {
+        console.error('Error:', err);
+        alert('Ocurrió un error al verificar el NIP.');
+    });
 }
 
 // Modificamos renderizarDetallePedido para permitir editar el precio si está autorizado

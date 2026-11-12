@@ -106,3 +106,6 @@ $routes->get('/admin/sucursales/json', 'DashboardController::getSucursalesJson')
 $routes->post('/admin/sucursales/guardar', 'DashboardController::guardarSucursal');
 $routes->post('/admin/sucursales/eliminar/(:num)', 'DashboardController::eliminarSucursal/$1');
 $routes->post('/admin/permisos/actualizar-usuario', 'PermisosController::actualizarUsuarioCompleto', ['filter' => 'group:superadmin']);
+
+// Ruta para verificar el NIP gerencial por AJAX
+$routes->post('/auth/verificar-nip', 'DashboardController::verificarNip', ['filter' => 'session']);

@@ -1193,4 +1193,38 @@ class DashboardController extends BaseController
 
         return $this->response->setJSON(['status' => 'error', 'message' => 'No se pudo eliminar la sucursal.']);
     }
+
+    public function verificarNip()
+    {
+        if (!$this->request->isAJAX()) {
+            return $this->response->setStatusCode(403);
+        }
+
+        $nip = $this->request->getPost('nip');
+
+        if (empty($nip)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'NIP no proporcionado.']);
+        }
+
+        $usersModel = new \App\Models\UserModel();
+        
+        // Buscamos un usuario activo que tenga ese NIP y pertenezca al grupo 'gerente' o 'superadmin'
+        // (Puedes ajustar la consulta según cómo manejes los grupos en Shield)
+        $usuario = $usersModel->where('nip', $nip)
+                            ->where('active', 1)
+                            ->first();
+
+        if ($usuario && ($usuario->inGroup('gerente', 'superadmin'))) {
+            return $this->response->setJSON([
+                'status' => 'success', 
+                'message' => 'Autorizado',
+                'usuario' => $usuario->username
+            ]);
+        }
+
+        return $this->response->setJSON([
+            'status' => 'error', 
+            'message' => 'NIP incorrecto o sin privilegios gerenciales.'
+        ]);
+    }
 }

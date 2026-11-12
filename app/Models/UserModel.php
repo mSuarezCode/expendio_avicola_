@@ -13,5 +13,6 @@ class UserModel extends ShieldUserModel
         'active',
         'last_active',
         'sucursal_id', // 👈 ¡Importante! Aquí agregamos tu campo personalizado
+        'nip', // 👈 Añadido para permitir su almacenamiento
     ];
 }
