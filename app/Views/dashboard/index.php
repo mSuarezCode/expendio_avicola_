@@ -29,6 +29,7 @@
                     <li class="nav-item">
                         <a class="nav-link" href="#" onclick="cambiarVista('pedidos', this)"><i class="fa-solid fa-receipt me-1"></i> Pedidos</a>
                     </li>
+                    <?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
                     <li class="nav-item">
                         <a class="nav-link" href="#" onclick="cambiarVista('produccion', this)"><i class="fa-solid fa-feather me-1"></i> Producción</a>
                     </li>
@@ -40,13 +41,14 @@
                             <i class="fa-solid fa-boxes-stacked me-1"></i> Almacén
                         </a>
                     </li>
-
+                    <?php endif; ?>
                     <!-- MENÚ DESPLEGABLE: CATÁLOGOS Y CONTACTOS -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="menuCatalogos" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fa-solid fa-folder-open me-1"></i> Catálogos
                         </a>
                         <ul class="dropdown-menu dropdown-menu-dark shadow" aria-labelledby="menuCatalogos">
+                            <?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
                             <li>
                                 <a class="dropdown-item" href="#" onclick="cambiarVista('precios', this)">
                                     <i class="fa-solid fa-tags me-2 text-warning"></i> Precios Diarios
@@ -62,6 +64,7 @@
                                     <i class="fa-solid fa-motorcycle me-2 text-info"></i> Repartidores
                                 </a>
                             </li>
+                            <?php endif; ?>
                             <li>
                                 <a class="dropdown-item" href="#" onclick="cambiarVista('clientes', this); cargarClientesDirectorio();">
                                     <i class="fa-solid fa-address-book me-2 text-primary"></i> Clientes
@@ -69,13 +72,14 @@
                             </li>
                         </ul>
                     </li>
-
+                    <?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
                     <!-- REPORTES -->
                     <li class="nav-item">
                         <a class="nav-link" href="#" onclick="cambiarVista('reportes', this); cargarReportesDinamicos();">
                             <i class="fa-solid fa-chart-line me-1"></i> Reportes
                         </a>
                     </li>
+                    <?php endif; ?>
 
                     <!-- MENÚ DESPLEGABLE: SISTEMA Y SEGURIDAD -->
                     <!-- MENÚ DINÁMICO SEGÚN ROL -->
@@ -172,6 +176,7 @@
 
     <div class="container py-4">
 
+        <?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
         <!-- VISTA 1: PRODUCCIÓN Y LOTES -->
         <div id="vista-produccion" class="vista-secccion">
             <div class="d-flex justify-content-between align-items-center mb-4">
@@ -289,7 +294,7 @@
                 </div>
             </div>
         </div>
-
+        <?php endif; ?>
         <!-- VISTA 3: PEDIDOS -->
         <div id="vista-pedidos" class="vista-secccion d-none">
             <div class="d-flex justify-content-between align-items-center mb-4">
@@ -490,7 +495,7 @@
                 }
             }
         </style>
-
+        <?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
         <!-- VISTA 5: PROVEEDORES -->
         <div id="vista-proveedores" class="vista-secccion d-none">
             <div class="d-flex justify-content-between align-items-center mb-4">
@@ -833,6 +838,7 @@
                 </div>
             </div>
         </div>
+        <?php endif; ?>
 
         <!-- VISTA: CLIENTES -->
         <div id="vista-clientes" class="vista-secccion d-none">
@@ -866,6 +872,7 @@
             </div>
         </div>
 
+        <?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
         <!-- VISTA 4: REPORTES Y ESTADÍSTICAS DE NEGOCIO -->
         <div id="vista-reportes" class="vista-secccion d-none">
             <div class="d-flex justify-content-between align-items-center mb-4">
@@ -1073,6 +1080,7 @@
                 </div>
             </div>
         </div>
+        <?php endif; ?>
 
     </div>
 
@@ -1253,6 +1261,7 @@
         </div>
     </div>
 
+    <?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
     <!-- Modal Registrar Proveedor -->
     <div class="modal fade" id="modalNuevoProveedor" tabindex="-1">
         <div class="modal-dialog">
@@ -1287,7 +1296,7 @@
             </div>
         </div>
     </div>
-
+    
     <!-- Modal Registrar Nuevo Lote (Actualizado con Peso Unitario y Cálculo Automático de Peso Total) -->
     <div class="modal fade" id="modalNuevoLote" tabindex="-1">
         <div class="modal-dialog modal-lg">
@@ -1371,6 +1380,7 @@
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
     <!-- Modal Armar Viaje de Reparto -->
     <div class="modal fade" id="modalArmarViaje" tabindex="-1">
@@ -1454,6 +1464,7 @@
         </div>
     </div>
 
+    <?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
     <!-- Modal para Registrar Nuevo Producto -->
     <div class="modal fade" id="modalNuevoProducto" tabindex="-1">
         <div class="modal-dialog">
@@ -1638,40 +1649,6 @@
         </div>
     </div>
 
-    <!-- Modal Tabla Rápida de Stock Disponible vs Vendido -->
-    <div class="modal fade" id="modalStockDisponibilidad" tabindex="-1">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content border-0 shadow">
-                <div class="modal-header bg-dark text-white">
-                    <h5 class="modal-title fw-bold"><i class="fa-solid fa-boxes-stacked me-2 text-warning"></i> Inventario de Productos y Disponibilidad</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0 text-center">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th class="text-start ps-3">Producto para Venta</th>
-                                    <!--
-                                    <th class="fade">Stock Usable (Procesado)</th>
-                                    <th class="fade">Vendidos Hoy</th>
-                                    -->
-                                    <th>Quedan Disponibles (Tenemos)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tbodyConsultaStockRapido">
-                                <tr><td colspan="4" class="text-center py-3 text-muted">Cargando inventarios...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="modal-footer py-2 bg-light">
-                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Modal Registrar Merma o Ajuste Manual -->
     <div class="modal fade" id="modalAjusteInventario" tabindex="-1">
         <div class="modal-dialog">
@@ -1711,6 +1688,41 @@
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- Modal Tabla Rápida de Stock Disponible vs Vendido -->
+    <div class="modal fade" id="modalStockDisponibilidad" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title fw-bold"><i class="fa-solid fa-boxes-stacked me-2 text-warning"></i> Inventario de Productos y Disponibilidad</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0 text-center">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th class="text-start ps-3">Producto para Venta</th>
+                                    <!--
+                                    <th class="fade">Stock Usable (Procesado)</th>
+                                    <th class="fade">Vendidos Hoy</th>
+                                    -->
+                                    <th>Quedan Disponibles (Tenemos)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyConsultaStockRapido">
+                                <tr><td colspan="4" class="text-center py-3 text-muted">Cargando inventarios...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer py-2 bg-light">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                </div>
             </div>
         </div>
     </div>
@@ -2019,6 +2031,7 @@
         </div>
     </div>
 
+    <?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
     <!-- Modal Registrar Nuevo Usuario (Interno) -->
     <div class="modal fade" id="modalNuevoUsuarioShield" tabindex="-1">
         <div class="modal-dialog">
@@ -2059,7 +2072,7 @@
             </div>
         </div>
     </div>
-
+    
     <!-- Modal Configuración de Plataforma (Exclusivo Superadmin) -->
     <div class="modal fade" id="modalConfiguracionSistema" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
@@ -2086,7 +2099,7 @@
             </div>
         </div>
     </div>
-
+    
     <!-- Modal Registrar / Editar Sucursal -->
     <div class="modal fade" id="modalNuevaSucursal" tabindex="-1">
         <div class="modal-dialog">
@@ -2121,7 +2134,7 @@
             </div>
         </div>
     </div>
-
+    
     <!-- Modal Editar Usuario Completo -->
     <div class="modal fade" id="modalEditarUsuarioCompleto" tabindex="-1">
         <div class="modal-dialog">
@@ -2188,6 +2201,7 @@
             </div>
         </div>
     </div>
+    <?php endif; ?>
     <!-- Bootstrap 5 JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
@@ -3636,6 +3650,7 @@ function cargarRepartidoresParaViaje() {
     });
 }
 
+<?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
 // Actualización centralizada del módulo de Reportes
 function cargarReportesDinamicos() {
     let inicio = document.getElementById('repFechaInicio').value;
@@ -3734,6 +3749,7 @@ function cargarFluctuacionCompraVenta() {
     .catch(err => console.error('Error:', err));
 }
 cargarFluctuacionCompraVenta();
+<?php endif; ?>
 
 let cortesTemporal = [];
 
@@ -4093,7 +4109,7 @@ function calcularPesoTotalLote() {
         inputPesoTotal.value = pesoTotalCalculado.toFixed(2);
     }
 }
-
+<?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
 function guardarLoteAjax() {
     let formElement = document.getElementById('formNuevoLoteDb');
     let formData = new FormData(formElement);
@@ -4155,7 +4171,7 @@ function guardarLoteAjax() {
         }
     });
 }
-
+<?php endif; ?>
 function cargarTablaStockRapido() {
     let tbody = document.getElementById('tbodyConsultaStockRapido');
     tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-muted"><i class="fa-solid fa-spinner fa-spin me-1"></i> Cargando disponibilidad de inventarios...</td></tr>';
@@ -4326,7 +4342,7 @@ function buscarClientePorTelefono(telefono) {
     })
     .catch(err => console.error('Error al buscar cliente:', err));
 }
-
+<?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
 function cargarInventarioGeneral() {
     let tbody = document.getElementById('tablaInventarioGeneral');
     tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted"><i class="fa-solid fa-spinner fa-spin me-1"></i> Cargando inventario general...</td></tr>';
@@ -4391,7 +4407,7 @@ function cargarInventarioGeneral() {
         tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-3">Error al cargar datos desde el servidor.</td></tr>';
     });
 }
-
+<?php endif; ?>
 // Cargar productos en el select del modal de merma
 function cargarProductosParaAjuste() {
     let select = document.getElementById('ajusteProductoId');
@@ -4416,10 +4432,12 @@ function cargarProductosParaAjuste() {
     .catch(err => console.error('Error al cargar productos para ajuste:', err));
 }
 
+<?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
 // Disparar la carga al abrir el modal (puedes agregar data-bs-toggle al botón o llamarlo así)
 document.getElementById('modalAjusteInventario').addEventListener('show.bs.modal', function () {
     cargarProductosParaAjuste();
 });
+<?php endif; ?>
 
 // Escuchar la apertura del modal para cargar los productos automáticamente
 document.addEventListener('DOMContentLoaded', function() {
@@ -4673,10 +4691,12 @@ function cargarCortesParaDespieceModal() {
     .catch(err => console.error('Error al cargar cortes para el despiece:', err));
 }
 
+<?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
 // Cargar cortes dinámicamente cuando se abre el modal
 document.getElementById('modalNuevoDespiece').addEventListener('show.bs.modal', function () {
     cargarCortesParaDespieceModal();
 });
+<?php endif; ?>
 
 
 let efectivoEsperadoGlobal = 0;
@@ -5809,7 +5829,10 @@ function guardarEdicionUsuarioAjax() {
     })
     .catch(err => console.error('Error al actualizar usuario:', err));
 }
+
+<?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
 document.getElementById('editSucursalId').value = usuario.sucursal_id || '';
+<?php endif; ?>
 </script>
 </body>
 </html>
