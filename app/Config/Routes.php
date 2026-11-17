@@ -109,3 +109,9 @@ $routes->post('/admin/permisos/actualizar-usuario', 'PermisosController::actuali
 
 // Ruta para verificar el NIP gerencial por AJAX
 $routes->post('/auth/verificar-nip', 'DashboardController::verificarNip', ['filter' => 'session']);
+
+$routes->post('/produccion/actualizar-lote', 'DashboardController::actualizarLote');
+$routes->post('/produccion/eliminar-lote/(:num)', 'DashboardController::eliminarLote/$1');
+$routes->get('/produccion/obtener-lote/(:num)', 'DashboardController::obtenerLote/$1');
+
+$routes->post('/pedidos/cancelar', 'DashboardController::cancelarPedido', ['filter' => 'session']);

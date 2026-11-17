@@ -200,6 +200,7 @@
                                     <th>Costo x Pza</th>
                                     <th>Fecha</th>
                                     <th class="text-center">Comprobante del Proveedor</th>
+                                    <th class="text-center">Acciones</th> <!-- NUEVA COLUMNA -->
                                 </tr>
                             </thead>
                             <tbody id="tablaLotesMock">
@@ -230,10 +231,25 @@
                                                     </button>
                                                 <?php endif; ?>
                                             </td>
+                                            <!-- NUEVA CELDA DE ACCIONES -->
+                                            <td class="text-center">
+                                                <div class="d-flex justify-content-center gap-1">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary" 
+                                                        onclick="abrirModalEditarLote(<?= $l['id'] ?>)" 
+                                                        title="Editar Lote">
+                                                        <i class="fa-solid fa-pen-to-square"></i>
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger" 
+                                                        onclick="eliminarLoteAjax(<?= $l['id'] ?>)" 
+                                                        title="Eliminar Lote">
+                                                        <i class="fa-solid fa-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php else: ?>
-                                    <tr><td colspan="8" class="text-center text-muted">No hay lotes registrados en la base de datos.</td></tr>
+                                    <tr><td colspan="9" class="text-center text-muted">No hay lotes registrados en la base de datos.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -442,6 +458,11 @@
                                             <td class="text-center">
 
                                                 <div class="d-flex justify-content-center gap-1">
+                                                    <?php if ($p['estado'] === 'pendiente' || $p['estado'] === 'en_proceso'): ?>
+                                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmarCancelacion(<?= $p['id'] ?>)" title="Cancelar Pedido">
+                                                            <i class="fa-solid fa-ban"></i>
+                                                        </button>
+                                                    <?php endif; ?>
                                                     <button class="btn btn-sm btn-outline-dark" onclick="reimprimirTicket({
                                                         id: '<?= $p['id'] ?>',
                                                         cliente: '<?= addslashes($p['cliente']) ?>',
@@ -1181,7 +1202,7 @@
                         <div class="mt-4 d-flex justify-content-between align-items-center">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                             <div class="d-flex gap-2">
-                                <button type="button" class="btn btn-primary" onclick="guardarPedidoAjax(true)">
+                                <button id="btnGuardarPedido" type="button" class="btn btn-primary" onclick="guardarPedidoAjax(true)">
                                     <i class="fa-solid fa-print me-1"></i> Guardar e Imprimir Ticket
                                 </button>
                                 <!--
@@ -1362,7 +1383,14 @@
 
                             <div class="col-md-4">
                                 <label class="form-label fw-bold" id="lblCostoUnitario">Costo Unitario ($)</label>
-                                <input type="number" step="0.50" class="form-control" id="mockCosto" name="mockCosto" placeholder="Ej: 95.00" required>
+                                <input type="number" step="0.50" class="form-control" id="mockCosto" name="mockCosto" placeholder="Ej: 95.00" oninput="calcularTotalesLote()" required>
+                                <small class="text-muted">Precio de compra.</small>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold text-primary">Precio de Venta al Público ($)</label>
+                                <input type="number" step="0.50" class="form-control fw-bold text-primary" id="mockPrecioVenta" name="precio_venta" placeholder="Ej: 115.00" required>
+                                <small class="text-muted">Precio unitario o por kilo de venta.</small>
                             </div>
                         </div>
                         
@@ -2201,7 +2229,117 @@
             </div>
         </div>
     </div>
+
+    <!-- Modal Editar Lote -->
+    <div class="modal fade" id="modalEditarLote" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title"><i class="fa-solid fa-pen-to-square text-warning me-2"></i> Editar Lote <span id="lblEditLoteId"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="formEditarLoteDb">
+                    <input type="hidden" id="editLoteId" name="lote_id">
+                    <div class="modal-body">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Proveedor</label>
+                                <select class="form-select" id="editLoteProveedor" name="proveedor_id" required>
+                                    <?php if (!empty($proveedores)): ?>
+                                        <?php foreach ($proveedores as $prov): ?>
+                                            <option value="<?= $prov['id'] ?>"><?= esc($prov['nombre_empresa']) ?></option>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Tipo de Ave</label>
+                                <select class="form-select" id="editLoteTipo" name="tipo_ave" required>
+                                    <option value="pollo">Pollo (Compra por Peso / Jaulas)</option>
+                                    <option value="gallina">Gallina</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Número de Jaulas</label>
+                                <input type="number" class="form-control" id="editJaulas" name="jaulas" oninput="calcularTotalesEdicion()" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Piezas por Jaula</label>
+                                <input type="number" class="form-control" id="editPiezasPorJaula" name="piezas_por_jaula" oninput="calcularTotalesEdicion()" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-primary fw-bold">Total de Piezas (Calculado)</label>
+                                <input type="number" class="form-control bg-light" id="editTotalPiezas" readonly>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold text-danger">Peso Unitario (Kg) *</label>
+                                <input type="number" step="0.01" class="form-control" id="editPesoUnitario" name="peso_unitario" oninput="calcularTotalesEdicion()" required>
+                                <small class="text-muted">Peso promedio por ave.</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-success fw-bold">Peso Total (Kg) (Calculado)</label>
+                                <input type="number" step="0.01" class="form-control bg-light" id="editPesoTotal" readonly>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Costo Unitario ($)</label>
+                                <input type="number" step="0.50" class="form-control" id="editCostoUnitario" name="costo_unitario" oninput="calcularTotalesEdicion()" required>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold text-primary">Precio de Venta al Público ($)</label>
+                                <input type="number" step="0.50" class="form-control fw-bold text-primary" id="editPrecioVenta" name="precio_venta" required>
+                                <small class="text-muted">Precio al público actualizado.</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" id="btnActualizarLote" class="btn btn-success fw-bold" onclick="guardarEdicionLoteAjax()">
+                            <i class="fa-solid fa-check me-1"></i> Guardar Cambios en BD
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
     <?php endif; ?>
+
+    <!-- Modal de Confirmación de Cancelación -->
+    <div class="modal fade" id="modalCancelarPedido" tabindex="-1" aria-labelledby="modalCancelarLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="modalCancelarLabel">
+                        <i class="fa-solid fa-triangle-exclamation me-2"></i>Cancelar Pedido
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-3">¿Estás seguro de que deseas cancelar el pedido <strong id="textoIdPedidoModal">#0</strong>? Esta acción devolverá los productos al inventario disponible.</p>
+                    
+                    <input type="hidden" id="inputCancelarPedidoId">
+                    
+                    <div class="mb-2">
+                        <label for="inputMotivoCancelacion" class="form-label fw-semibold">Motivo de la cancelación:</label>
+                        <textarea class="form-control" id="inputMotivoCancelacion" rows="2" placeholder="Ej. Error de captura en mostrador, cliente canceló..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                    <button type="button" class="btn btn-danger" id="btnConfirmarCancelacion" onclick="ejecutarCancelacionAJAX()">
+                        <i class="fa-solid fa-ban me-1"></i> Sí, cancelar pedido
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Bootstrap 5 JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
@@ -3125,6 +3263,16 @@ function guardarPedidoAjax(imprimir) {
         return;
     }
 
+    // 1. BLOQUEAR EL BOTÓN Y MOSTRAR SPINNER
+    let btnGuardar = document.getElementById('btnGuardarPedido');
+    let textoOriginal = '';
+    if (btnGuardar) {
+    console.log('llega');
+        textoOriginal = btnGuardar.innerHTML;
+        btnGuardar.disabled = true;
+        btnGuardar.innerHTML = `<i class="fa-solid fa-spinner fa-spin me-1"></i> Guardando...`;
+    }
+
     let total = itemsTemporal.reduce((sum, item) => sum + item.subtotal, 0);
     let tipoEntrega = document.getElementById('pedTipoEntrega').value;
     let tipoPago = document.getElementById('pedTipoPago').value;
@@ -3142,13 +3290,6 @@ function guardarPedidoAjax(imprimir) {
     formData.append('referencia', referencia);
     formData.append('total', total);
     formData.append('items', JSON.stringify(itemsTemporal));
-
-    /*
-    formData.forEach((valor, clave) => {
-        console.log(`${clave}:`, valor);
-    });
-     */
-    //console.log(tipoPago);
     formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
 
     fetch('<?= base_url('/pedidos/guardar') ?>', {
@@ -3156,11 +3297,17 @@ function guardarPedidoAjax(imprimir) {
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
         body: formData
     })
-    .then(response => response.text()) // 1. Capturamos primero como texto plano para evitar errores de parseo por HTML adjunto
+    .then(response => response.text())
     .then(text => {
+        // 2. RESTAURAR EL BOTÓN EN EL ÉXITO
+        if (btnGuardar) {
+            btnGuardar.disabled = false;
+            btnGuardar.innerHTML = textoOriginal;
+        }
+
         let data;
         try {
-            data = JSON.parse(text); // 2. Intentamos convertirlo manualmente a JSON
+            data = JSON.parse(text);
         } catch (e) {
             console.error("Respuesta del servidor no válida:", text);
             throw new Error("El servidor respondió con un formato no válido.");
@@ -3208,9 +3355,7 @@ function guardarPedidoAjax(imprimir) {
                 tabla.innerHTML = '';
             }
 
-            let badgeEntrega = 'bg-light text-dark border';
             let badgePago = tipoPago === 'transferencia' ? 'bg-primary text-white' : 'bg-success text-white';
-            
             let badgeRepartidor = `<span class="badge bg-light text-muted border"><i class="fa-solid fa-clock me-1"></i> Por asignar</span>`;
             let repartidorTextoTicket = 'Sin asignar';
             
@@ -3236,6 +3381,9 @@ function guardarPedidoAjax(imprimir) {
                     <td><span class="badge bg-warning text-dark">En Producción</span></td>
                     <td class="text-center">
                         <div class="d-flex justify-content-center gap-1">
+                            <button class="btn btn-sm btn-outline-danger" onclick="confirmarCancelacion(${data.folio})" title="Cancelar Pedido">
+                                <i class="fa-solid fa-ban"></i>
+                            </button>
                             <button class="btn btn-sm btn-outline-dark" onclick="reimprimirTicket({
                                 id: '${data.folio}',
                                 cliente: '${cliente.replace(/'/g, "\\'")}',
@@ -3247,7 +3395,6 @@ function guardarPedidoAjax(imprimir) {
                             })" title="Reimprimir Ticket">
                                 <i class="fa-solid fa-print"></i>
                             </button>
-                            <!-- 🛠️ CORREGIDO: Pasando tipoEntrega y repartidorActual -->
                             <button class="btn btn-sm btn-outline-success" onclick="cambiarEstadoPedido(${data.folio}, 'entregado', '${tipoEntrega}', '${repartidorTextoTicket}')">
                                 <i class="fa-solid fa-check"></i> Entregar
                             </button>
@@ -3257,13 +3404,12 @@ function guardarPedidoAjax(imprimir) {
             `;
             tabla.insertAdjacentHTML('afterbegin', nuevaFila);
             
-            // Limpiar variables temporales, formulario y RESTABLECER EL NIP sin recargar
+            // Limpiar variables temporales y formulario
             itemsTemporal = [];
             descuentoAutorizado = false; 
             document.getElementById('tbodyDetallePedido').innerHTML = '<tr><td colspan="5" class="text-center text-muted fs-7">No se han añadido productos.</td></tr>';
             document.getElementById('lblTotalPedido').innerText = '0.00';
             
-            // Limpiar formulario de forma segura
             let formPedido = document.getElementById('formMockPedido');
             if (formPedido) formPedido.reset();
             
@@ -3273,6 +3419,11 @@ function guardarPedidoAjax(imprimir) {
         }
     })
     .catch(error => {
+        // 3. RESTAURAR EL BOTÓN SI OCURRE UN ERROR DE RED
+        if (btnGuardar) {
+            btnGuardar.disabled = false;
+            btnGuardar.innerHTML = textoOriginal;
+        }
         console.error('Error:', error);
         alert('Ocurrió un error al procesar la solicitud con el servidor.');
     });
@@ -3293,12 +3444,14 @@ function cargarProductos() {
             select.innerHTML = '<option value="">No hay productos disponibles</option>';
             return;
         }
+        console.log(productos);
 
         productos.forEach(p => {
-            if (p.estado == 1 || p.estado === "1") {
+            if (p.stock_disponible_num != 0 && (p.estado == 1 || p.estado === "1")) {
                 let option = document.createElement('option');
                 option.value = `${p.nombre}|${p.precio_venta_actual}|${p.tipo_unidad}`;
                 option.setAttribute('data-stock', p.stock_disponible_num);
+                // Ejemplo renderizado: Lt#3 - Gallina - Disp: 40.00 piezas ($150.00)
                 option.text = `${p.nombre} - Disp: ${parseFloat(p.stock_disponible_num).toFixed(2)} ${p.tipo_unidad} ($${parseFloat(p.precio_venta_actual).toFixed(2)})`;
                 select.appendChild(option);
             }
@@ -4120,15 +4273,6 @@ function guardarLoteAjax() {
         document.getElementById('lotePesoTotal').focus();
         return;
     }
-
-    // ❌ ELIMINAMOS O COMENTAMOS ESTA VALIDACIÓN PARA QUE NO SEA OBLIGATORIO:
-    /*
-    let archivoInput = document.getElementById('mockComprobante');
-    if (archivoInput.files.length === 0) {
-        alert('¡Atención! Es obligatorio adjuntar el comprobante o ticket del proveedor.');
-        return;
-    }
-    */
 
     let btnGuardar = document.querySelector('#modalNuevoLote .modal-footer .btn-success');
     let textoOriginalBtn = btnGuardar.innerHTML;
@@ -5038,9 +5182,8 @@ function cambiarLogicaTipoAve(tipo) {
 function calcularTotalesLote() {
     let jaulas = parseInt(document.getElementById('loteJaulas').value) || 0;
     let pzaPorJaula = parseInt(document.getElementById('lotePiezasPorJaula').value) || 0;
-    let tipoAve = document.getElementById('mockTipo').value;
     
-    // 1. Calcular Total de Piezas
+    // 1. Total de Piezas
     let totalPzas = 0;
     if (jaulas > 0 && pzaPorJaula > 0) {
         totalPzas = jaulas * pzaPorJaula;
@@ -5049,12 +5192,13 @@ function calcularTotalesLote() {
         document.getElementById('lotePiezas').value = '';
     }
 
-    // 2. Calcular Peso Total (Total de Piezas * Peso Unitario)
+    // 2. Peso Total (Total de Piezas * Peso Unitario)
     let pesoUnitario = parseFloat(document.getElementById('lotePesoUnitario').value) || 0;
     let inputPesoTotal = document.getElementById('lotePesoTotal');
+    let pesoTotalCalculado = 0;
 
     if (totalPzas > 0 && pesoUnitario > 0) {
-        let pesoTotalCalculado = totalPzas * pesoUnitario;
+        pesoTotalCalculado = totalPzas * pesoUnitario;
         inputPesoTotal.value = pesoTotalCalculado.toFixed(2);
     } else {
         inputPesoTotal.value = '';
@@ -5794,6 +5938,7 @@ function guardarEdicionUsuarioAjax() {
     let grupo    = document.getElementById('editGrupo').value;
     let active   = document.getElementById('editActive').value;
     let sucursalId = document.getElementById('editSucursalId').value;
+    let Nip = document.getElementById('editNip').value;
 
 
     if (!username || !email) {
@@ -5809,6 +5954,7 @@ function guardarEdicionUsuarioAjax() {
     formData.append('grupo', grupo);
     formData.append('active', active); // Enviar el estado seleccionado
     formData.append('sucursal_id', sucursalId);
+    formData.append('nip', Nip);
     formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
 
     fetch('<?= base_url('/admin/permisos/actualizar-usuario') ?>', {
@@ -5832,7 +5978,249 @@ function guardarEdicionUsuarioAjax() {
 
 <?php if (auth()->user()->inGroup('superadmin', 'gerente')): ?>
 document.getElementById('editSucursalId').value = usuario.sucursal_id || '';
+
+function abrirModalEditarLote(id) {
+    fetch(`<?= base_url('/produccion/obtener-lote') ?>/${id}`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(res => res.json())
+    .then(response => {
+        if (response.status === 'success') {
+            let lote = response.data;
+
+            document.getElementById('lblEditLoteId').innerText = `#${lote.id}`;
+            document.getElementById('editLoteId').value = lote.id;
+            document.getElementById('editLoteProveedor').value = lote.proveedor_id;
+            document.getElementById('editLoteTipo').value = lote.tipo_ave;
+            
+            // Validar de forma segura el precio de venta por si el input aún no está en el HTML
+            let inputPrecioVenta = document.getElementById('editPrecioVenta');
+            if (inputPrecioVenta) {
+                inputPrecioVenta.value = lote.precio_venta || 0;
+            }
+            
+            document.getElementById('editJaulas').value = lote.jaulas || 0;
+            document.getElementById('editPiezasPorJaula').value = lote.piezas_por_jaula || 0;
+            
+            let piezas = parseInt(lote.piezas) || 1;
+            let pesoTotal = parseFloat(lote.peso) || 0;
+            let pesoUnitario = piezas > 0 ? (pesoTotal / piezas) : 0;
+
+            document.getElementById('editPesoUnitario').value = pesoUnitario.toFixed(2);
+            document.getElementById('editCostoUnitario').value = lote.costo_unitario;
+
+            calcularTotalesEdicion();
+
+            let modal = new bootstrap.Modal(document.getElementById('modalEditarLote'));
+            modal.show();
+        } else {
+            alert('Error: ' + response.message);
+        }
+    })
+    .catch(err => {
+        console.error('Error detallado:', err); // Revisa la consola F12 si vuelve a fallar
+        alert('No se pudieron cargar los datos del lote desde la base de datos.');
+    });
+}
+
+function guardarEdicionLoteAjax() {
+    let formEl = document.getElementById('formEditarLoteDb');
+    let formData = new FormData(formEl);
+    let loteId = document.getElementById('editLoteId').value;
+    let provId = document.getElementById('editLoteProveedor').value;
+    let tipoAve = document.getElementById('editLoteTipo').value;
+    
+    let jaulas = parseInt(document.getElementById('editJaulas').value) || 0;
+    let piezasPorJaula = parseInt(document.getElementById('editPiezasPorJaula').value) || 0;
+    let piezas = jaulas * piezasPorJaula;
+    let pesoTotal = parseFloat(document.getElementById('editPesoTotal').value) || 0;
+    let costo = parseFloat(document.getElementById('editCostoUnitario').value) || 0;
+
+    if (piezas <= 0 || pesoTotal <= 0) {
+        alert('Las piezas y el peso total deben ser mayores a cero.');
+        return;
+    }
+
+    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+
+    let btn = document.getElementById('btnActualizarLote');
+    let textoOriginal = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin me-1"></i> Guardando...`;
+
+    fetch('<?= base_url('/produccion/actualizar-lote') ?>', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = textoOriginal;
+
+        if (data.status === 'success') {
+            let modalEl = document.getElementById('modalEditarLote');
+            bootstrap.Modal.getInstance(modalEl).hide();
+
+            // Refrescar los datos en la tabla principal visualmente sin recargar
+            let fila = document.getElementById(`fila-lote-tabla-${loteId}`);
+            if (fila) {
+                let celdas = fila.querySelectorAll('td');
+                let badgeClase = tipoAve === 'pollo' ? 'warning text-dark' : 'danger';
+                
+                celdas[1].innerText = `Proveedor ID #${provId}`;
+                celdas[2].innerHTML = `<span class="badge bg-${badgeClase}">${tipoAve.toUpperCase()}</span>`;
+                celdas[3].innerText = `${piezas} aves`;
+                celdas[4].innerText = `${pesoTotal.toFixed(2)} kg`;
+                celdas[5].innerText = `$${costo.toFixed(2)}`;
+            }
+
+            alert(data.message);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(err => {
+        console.error('Error:', err);
+        btn.disabled = false;
+        btn.innerHTML = textoOriginal;
+        alert('Ocurrió un error al actualizar el lote.');
+    });
+}
+
+function eliminarLoteAjax(id) {
+    if (!confirm(`¿Estás seguro de eliminar el Lote #${id}? Esta acción no se puede deshacer.`)) return;
+
+    fetch(`<?= base_url('/produccion/eliminar-lote') ?>/${id}`, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ '<?= csrf_token() ?>': '<?= csrf_hash() ?>' })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            let fila = document.getElementById(`fila-lote-tabla-${id}`);
+            if (fila) fila.remove();
+
+            // Quitar también la fila de la vista de despiece si existe
+            let filaDespiece = document.getElementById(`fila-lote-${id}`);
+            if (filaDespiece) filaDespiece.remove();
+
+            alert(data.message);
+        } else {
+            alert('⚠️ ' + data.message);
+        }
+    })
+    .catch(err => {
+        console.error('Error:', err);
+        alert('Ocurrió un error al intentar eliminar el lote.');
+    });
+}
+
+function calcularTotalesEdicion() {
+    let jaulas = parseInt(document.getElementById('editJaulas').value) || 0;
+    let piezasPorJaula = parseInt(document.getElementById('editPiezasPorJaula').value) || 0;
+    let totalPiezas = jaulas * piezasPorJaula;
+    document.getElementById('editTotalPiezas').value = totalPiezas;
+
+    let pesoUnitario = parseFloat(document.getElementById('editPesoUnitario').value) || 0;
+    let pesoTotal = totalPiezas * pesoUnitario;
+    document.getElementById('editPesoTotal').value = pesoTotal.toFixed(2);
+
+    // NUEVO: Cálculo Automático en Edición
+    let costoUnitario = parseFloat(document.getElementById('editCostoUnitario').value) || 0;
+    let costoTotal = pesoTotal * costoUnitario;
+}
 <?php endif; ?>
+
+let modalCancelarInstance = null;
+
+function confirmarCancelacion(pedidoId) {
+    // 1. Asignar valores al modal
+    document.getElementById('inputCancelarPedidoId').value = pedidoId;
+    document.getElementById('textoIdPedidoModal').textContent = `#${pedidoId}`;
+    document.getElementById('inputMotivoCancelacion').value = ''; // Limpiar campo anterior
+
+    // 2. Abrir modal usando directamente getOrCreateInstance sin variable global previa
+    const modalEl = document.getElementById('modalCancelarPedido');
+    const modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modalInstance.show();
+}
+
+function ejecutarCancelacionAJAX() {
+    const pedidoId = document.getElementById('inputCancelarPedidoId').value;
+    const motivo = document.getElementById('inputMotivoCancelacion').value.trim();
+    const btnConfirmar = document.getElementById('btnConfirmarCancelacion');
+
+    // Estado de carga en el botón para evitar envíos duplicados
+    const textoOriginal = btnConfirmar.innerHTML;
+    btnConfirmar.disabled = true;
+    btnConfirmar.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Cancelando...';
+
+    const formData = new FormData();
+    formData.append('id', pedidoId);
+    formData.append('motivo', motivo || 'Cancelado por error en mostrador');
+
+    fetch('<?= base_url("pedidos/cancelar") ?>', {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // 1. Cerrar el modal de forma limpia
+            const modalEl = document.getElementById('modalCancelarPedido');
+            const modalInstance = bootstrap.Modal.getInstance(modalEl);
+            if (modalInstance) {
+                modalInstance.hide();
+            }
+
+            // 2. Mostrar notificación flotante
+            mostrarAlertaFlotante(data.message, 'success');
+
+            // 3. Remover la fila de la tabla dinámicamente
+            const filaPedido = document.getElementById(`fila-pedido-${pedidoId}`);
+            if (filaPedido) {
+                filaPedido.remove();
+            }
+
+            // 4. Actualizar inventario y métricas del dashboard
+            if (typeof actualizarStockProductos === 'function') actualizarStockProductos();
+            if (typeof actualizarMetricasDashboard === 'function') actualizarMetricasDashboard();
+            if (typeof actualizarMetricasCards === 'function') { actualizarMetricasCards();}
+
+        } else {
+            mostrarAlertaFlotante(data.message, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        mostrarAlertaFlotante('Ocurrió un error de conexión al cancelar el pedido.', 'danger');
+    })
+    .finally(() => {
+        // Restaurar el botón
+        btnConfirmar.disabled = false;
+        btnConfirmar.innerHTML = textoOriginal;
+    });
+}
+
+function mostrarAlertaFlotante(mensaje, tipo = 'success') {
+    const alertaHTML = `
+        <div class="alert alert-${tipo} alert-dismissible fade show shadow position-fixed top-0 end-0 m-3" role="alert" style="z-index: 9999;">
+            ${mensaje}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', alertaHTML);
+    
+    setTimeout(() => {
+        const alertas = document.querySelectorAll('.alert-dismissible');
+        if (alertas.length > 0) alertas[0].remove();
+    }, 3500);
+}
 </script>
 </body>
 </html>

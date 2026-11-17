@@ -90,7 +90,7 @@ class DashboardController extends BaseController
         // Traer solo los pedidos activos (oculta los archivados/cerrados de días anteriores)
         $data['pedidos']     = $pedidoModel->where('sucursal_id', $sucursalActivaId)
                                         ->where("DATE(created_at)", $hoy)
-                                        ->where("estado !=", "archivado")
+                                        ->whereNotIn('estado', ['archivado', 'cancelado']) // <--- CAMBIAR ESTA LÍNEA
                                         ->orderBy('id', 'DESC')
                                         ->findAll();
         $data['lotesDisponibles'] = $loteModel->orderBy('id', 'DESC')->findAll();
@@ -250,33 +250,81 @@ class DashboardController extends BaseController
 
     public function getProductosJson()
     {
-        //if (!$this->request->isAJAX()) {
-        //    return $this->response->setJSON([]);
-        //}
-
         $db = \Config\Database::connect();
         $session = session();
         $sucursalActivaId = $session->get('sucursal_activa_id') ?? 1;
 
-        // 1. Obtenemos los productos del catálogo
-        $productos = $db->table('catalogo_productos')->where('estado', 1)->get()->getResultArray();
+        $resultado = [];
 
-        // 2. Obtenemos el total vendido hoy por cada producto uniendo detalle_pedidos y pedidos con sucursal
+        // 1. Obtener lotes de aves con stock restante para listarlos individualmente (Ej: Lt#3 - Gallina)
+        $lotesData = $db->table('lotes')
+            ->where('sucursal_id', $sucursalActivaId)
+            ->orderBy('id', 'DESC')
+            ->get()
+            ->getResultArray();
+
+        $loteIds = array_column($lotesData, 'id');
+        $procesosMermas = !empty($loteIds) 
+            ? $db->table('procesamiento_mermas')->whereIn('lote_id', $loteIds)->get()->getResultArray() 
+            : [];
+
+        $mapaPiezasDestinadasPorLote = [];
+        foreach ($procesosMermas as $pm) {
+            $mapaPiezasDestinadasPorLote[$pm['lote_id']] = intval($pm['piezas_destinadas']);
+        }
+
+        // Ventas de hoy para descontar stock en tiempo real
         $ventasHoy = $db->table('detalle_pedidos')
-            ->select('detalle_pedidos.nombre, SUM(detalle_pedidos.subtotal) as total_vendido')
+            ->select('detalle_pedidos.nombre, SUM(detalle_pedidos.cantidad) as total_vendido_cant')
             ->join('pedidos', 'pedidos.id = detalle_pedidos.pedido_id')
             ->where('DATE(pedidos.created_at)', date('Y-m-d'))
             ->where('pedidos.sucursal_id', $sucursalActivaId)
+            ->where('pedidos.estado !=', 'cancelado') // <--- Agrega esto para liberar el stock
             ->groupBy('detalle_pedidos.nombre')
             ->get()
             ->getResultArray();
 
         $mapaVentas = [];
         foreach ($ventasHoy as $v) {
-            $mapaVentas[$v['nombre']] = floatval($v['total_vendido']);
+            $mapaVentas[$v['nombre']] = floatval($v['total_vendido_cant']);
         }
 
-        // 3. Obtenemos el total procesado de cortes filtrado por la sucursal activa
+        foreach ($lotesData as $l) {
+            $loteId = $l['id'];
+            $tipoAve = ucfirst($l['tipo_ave']); // Pollo o Gallina
+            $piezasLote = intval($l['piezas']);
+            $piezasDestinadas = $mapaPiezasDestinadasPorLote[$loteId] ?? 0;
+            $piezasRestantes = max(0, $piezasLote - $piezasDestinadas);
+
+            // Formato exacto del nombre del lote requerido
+            $nombreItem = "Lt#{$loteId} - {$tipoAve}";
+            
+            // Precio de venta configurado en el lote o respaldado por el catálogo
+            $precioVenta = floatval($l['precio_venta'] ?? 0);
+            if ($precioVenta <= 0) {
+                $prodCat = $db->table('catalogo_productos')->like('LOWER(nombre)', strtolower($l['tipo_ave']))->get()->getRowArray();
+                $precioVenta = floatval($prodCat['precio_venta_actual'] ?? 0);
+            }
+
+            $vendido = $mapaVentas[$nombreItem] ?? 0;
+            $stockDisponible = max(0, $piezasRestantes - $vendido);
+
+            if ($piezasRestantes > 0) {
+                $resultado[] = [
+                    'id'                   => 'lote_' . $loteId,
+                    'nombre'               => $nombreItem,
+                    'tipo_unidad'          => 'piezas',
+                    'precio_venta_actual'  => $precioVenta,
+                    'stock_disponible_num' => $stockDisponible,
+                    'estado'               => 1,
+                    'vendido_hoy'          => $vendido
+                ];
+            }
+        }
+
+        // 2. Obtener cortes / subproductos (medidos en kilos)
+        $productosCatalogo = $db->table('catalogo_productos')->where('estado', 1)->get()->getResultArray();
+
         $procesados = $db->table('procesamiento_detalles')
             ->select('procesamiento_detalles.producto_id, SUM(procesamiento_detalles.cantidad_kg) as total_procesado')
             ->join('procesamiento_mermas', 'procesamiento_mermas.id = procesamiento_detalles.proceso_id')
@@ -290,47 +338,12 @@ class DashboardController extends BaseController
             $mapaProcesados[$p['producto_id']] = floatval($p['total_procesado']);
         }
 
-        // 4. CÁLCULO DE AVES ENTERAS DISPONIBLES DESDE LOS LOTES Y DESPIECE
-        $lotesData = $db->table('lotes')
-            ->where('sucursal_id', $sucursalActivaId)
-            ->get()
-            ->getResultArray();
-
-        $loteIds = array_column($lotesData, 'id');
-        $procesosMermas = !empty($loteIds) 
-            ? $db->table('procesamiento_mermas')->whereIn('lote_id', $loteIds)->get()->getResultArray() 
-            : [];
-        
-        $mapaPiezasDestinadasPorLote = [];
-        foreach ($procesosMermas as $pm) {
-            $mapaPiezasDestinadasPorLote[$pm['lote_id']] = intval($pm['piezas_destinadas']);
-        }
-
-        $stockAvesTipo = ['pollo' => 0, 'gallina' => 0];
-        foreach ($lotesData as $l) {
-            $loteId = $l['id'];
-            $tipo = strtolower($l['tipo_ave']);
-            $piezasLote = intval($l['piezas']);
-            $piezasDestinadas = $mapaPiezasDestinadasPorLote[$loteId] ?? 0;
-            
-            // Piezas restantes del lote que quedan como enteros
-            $piezasRestantesLote = max(0, $piezasLote - $piezasDestinadas);
-            
-            if (isset($stockAvesTipo[$tipo])) {
-                $stockAvesTipo[$tipo] += $piezasRestantesLote;
-            }
-        }
-
-        // 5. Obtenemos los ajustes/mermas acumulados por producto desde 'historial_ajustes_almacen'
         $ajustes = $db->table('historial_ajustes_almacen')
             ->select('producto_id, tipo, SUM(cantidad) as total_ajuste')
             ->groupBy('producto_id, tipo')
             ->get()->getResultArray();
 
         $mapaAjustes = [];
-        $mermasHoyTotal = 0;
-        $hoy = date('Y-m-d');
-
         foreach ($ajustes as $a) {
             $pId = $a['producto_id'];
             if (!isset($mapaAjustes[$pId])) {
@@ -339,58 +352,32 @@ class DashboardController extends BaseController
             $mapaAjustes[$pId][$a['tipo']] += floatval($a['total_ajuste']);
         }
 
-        // Mermas específicas de hoy para la tarjeta superior
-        $mermasHoyQuery = $db->table('historial_ajustes_almacen')
-            ->select('SUM(cantidad) as mermas_hoy')
-            ->where('tipo', 'merma')
-            ->where('DATE(created_at)', $hoy)
-            ->get()->getRow();
-        
-        $mermasHoyTotal = $mermasHoyQuery ? floatval($mermasHoyQuery->mermas_hoy) : 0.00;
-
-        // 6. Armamos el resultado final combinando todo
-        $resultado = [];
-        foreach ($productos as $prod) {
-            $id = $prod['id'];
-            $nombre = $prod['nombre'];
-            $tipoUnidad = $prod['tipo_unidad'];
-            $estado = $prod['estado'];
-
-            $vendido = $mapaVentas[$nombre] ?? 0;
-            $mermaAcumulada = $mapaAjustes[$id]['merma'] ?? 0;
-            $entradaAcumulada = $mapaAjustes[$id]['entrada'] ?? 0;
-
-            // Si el producto se mide en piezas (Pollo Entero, Gallina, etc.)
-            if ($tipoUnidad === 'piezas') {
-                $tipoAveKey = '';
-                if (stripos($nombre, 'pollo') !== false) {
-                    $tipoAveKey = 'pollo';
-                } elseif (stripos($nombre, 'gallina') !== false) {
-                    $tipoAveKey = 'gallina';
-                }
-
-                $stockBase = $tipoAveKey ? ($stockAvesTipo[$tipoAveKey] ?? 0) : ($mapaProcesados[$id] ?? 0);
-                $stockDisponible = ($stockBase + $entradaAcumulada) - ($vendido + $mermaAcumulada);
-            } else {
-                // Para cortes medidos en kilos
+        foreach ($productosCatalogo as $prod) {
+            if ($prod['tipo_unidad'] === 'kilos') {
+                $id = $prod['id'];
+                $nombre = $prod['nombre'];
+                $vendido = $mapaVentas[$nombre] ?? 0;
+                $mermaAcumulada = $mapaAjustes[$id]['merma'] ?? 0;
+                $entradaAcumulada = $mapaAjustes[$id]['entrada'] ?? 0;
                 $inicial = $mapaProcesados[$id] ?? 0;
-                $stockDisponible = ($inicial + $entradaAcumulada) - ($vendido + $mermaAcumulada);
-            }
 
-            $resultado[] = [
-                'id'                   => $id,
-                'nombre'               => $nombre,
-                'tipo_unidad'          => $tipoUnidad,
-                'precio_venta_actual'  => $prod['precio_venta_actual'],
-                'stock_disponible_num' => max(0, $stockDisponible),
-                'estado'               => $estado,
-                'vendido_hoy'          => $vendido
-            ];
+                $stockDisponible = ($inicial + $entradaAcumulada) - ($vendido + $mermaAcumulada);
+
+                $resultado[] = [
+                    'id'                   => $id,
+                    'nombre'               => $nombre,
+                    'tipo_unidad'          => 'kilos',
+                    'precio_venta_actual'  => $prod['precio_venta_actual'],
+                    'stock_disponible_num' => max(0, $stockDisponible),
+                    'estado'               => 1,
+                    'vendido_hoy'          => $vendido
+                ];
+            }
         }
 
         return $this->response->setJSON([
             'productos'  => $resultado,
-            'mermas_hoy' => $mermasHoyTotal
+            'mermas_hoy' => 0
         ]);
     }
 
@@ -452,6 +439,7 @@ class DashboardController extends BaseController
         $ventasEfectivo = $db->table('pedidos')
             ->where('tipo_pago', 'efectivo')
             ->where('sucursal_id', $sucursalActivaId)
+            ->where('estado !=', 'cancelado') // <--- AGREGAR ESTA LÍNEA
             ->where("DATE(created_at)", $hoy)
             ->selectSum('total')
             ->get()
@@ -461,6 +449,7 @@ class DashboardController extends BaseController
         $ventasTransferencia = $db->table('pedidos')
             ->where('tipo_pago', 'transferencia')
             ->where('sucursal_id', $sucursalActivaId)
+            ->where('estado !=', 'cancelado') // <--- AGREGAR ESTA LÍNEA
             ->where("DATE(created_at)", $hoy)
             ->selectSum('total')
             ->get()
@@ -649,6 +638,7 @@ class DashboardController extends BaseController
         $zonas = $db->table('pedidos')
             ->select('colonia as zona_entrega, COUNT(*) as total_pedidos, SUM(total) as volumen_venta')
             ->where('sucursal_id', $sucursalActivaId)
+            ->where('estado !=', 'cancelado')
             ->groupBy('colonia')
             ->get()
             ->getResultArray();
@@ -1225,6 +1215,173 @@ class DashboardController extends BaseController
         return $this->response->setJSON([
             'status' => 'error', 
             'message' => 'NIP incorrecto o sin privilegios gerenciales.'
+        ]);
+    }
+
+    public function actualizarLote()
+    {
+        $loteModel = new \App\Models\LoteModel();
+        $id = $this->request->getPost('lote_id');
+
+        if (!$id) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'ID de lote no recibido.']);
+        }
+
+        $jaulas         = (int) $this->request->getPost('jaulas');
+        $piezasPorJaula = (int) $this->request->getPost('piezas_por_jaula');
+        $piezas         = $jaulas * $piezasPorJaula; // Cálculo automático igual que al crear
+        $pesoUnitario   = (float) $this->request->getPost('peso_unitario');
+        $peso           = $piezas * $pesoUnitario; // Peso total calculado
+        $costoUnitario  = (float) $this->request->getPost('costo_unitario');
+        $precioVenta    = (float) $this->request->getPost('precio_venta');
+
+        if ($piezas <= 0 || $peso <= 0) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'El número de piezas y el peso total deben ser mayores a 0.']);
+        }
+
+        $data = [
+            'proveedor_id'     => $this->request->getPost('proveedor_id'),
+            'tipo_ave'         => $this->request->getPost('tipo_ave'),
+            'jaulas'           => $jaulas,
+            'piezas_por_jaula' => $piezasPorJaula,
+            'piezas'           => $piezas,
+            'peso'             => $peso,
+            'costo_unitario'   => $costoUnitario,
+            'precio_venta'      => $precioVenta // <-- ¡Importante guardar este campo!
+        ];
+
+        if ($loteModel->update($id, $data)) {
+            return $this->response->setJSON([
+                'status'  => 'success',
+                'message' => '¡Lote actualizado correctamente!'
+            ]);
+        }
+
+        return $this->response->setJSON([
+            'status'  => 'error',
+            'message' => 'No se pudo actualizar el lote en la base de datos.'
+        ]);
+    }
+
+    public function eliminarLote($id)
+    {
+        $db = \Config\Database::connect();
+        
+        // Verificar si el lote ya tiene un proceso de despiece asociado
+        $tieneProceso = $db->table('procesamiento_mermas')->where('lote_id', $id)->countAllResults();
+        if ($tieneProceso > 0) {
+            return $this->response->setJSON([
+                'status'  => 'error',
+                'message' => 'No se puede eliminar este lote porque ya tiene un despiece/procesamiento registrado.'
+            ]);
+        }
+
+        $loteModel = new \App\Models\LoteModel();
+        $lote = $loteModel->find($id);
+
+        if ($lote && $loteModel->delete($id)) {
+            // Si tenía archivo comprobante físico, lo borramos del servidor
+            if (!empty($lote['comprobante'])) {
+                $rutaArchivo = FCPATH . 'uploads/lotes/' . $lote['comprobante'];
+                if (is_file($rutaArchivo)) {
+                    @unlink($rutaArchivo);
+                }
+            }
+
+            return $this->response->setJSON([
+                'status'  => 'success',
+                'message' => 'Lote eliminado correctamente.'
+            ]);
+        }
+
+        return $this->response->setJSON([
+            'status'  => 'error',
+            'message' => 'No se pudo eliminar el lote.'
+        ]);
+    }
+
+    public function obtenerLote($id)
+    {
+        $loteModel = new \App\Models\LoteModel();
+        $lote = $loteModel->find($id);
+
+        if ($lote) {
+            /**
+             * 
+            $db = \Config\Database::connect();
+            // Buscamos el precio de venta actual del producto en el catálogo
+            $producto = $db->table('catalogo_productos')
+                        ->like('LOWER(nombre)', strtolower($lote['tipo_ave']))
+                        ->get()
+                        ->getRowArray();
+
+            $lote['precio_venta'] = $producto['precio_venta_actual'] ?? 0;
+             */
+
+            return $this->response->setJSON(['status' => 'success', 'data' => $lote]);
+        }
+
+        return $this->response->setJSON(['status' => 'error', 'message' => 'Lote no encontrado.']);
+    }
+
+    public function cancelarPedido()
+    {
+        if (!$this->request->isAJAX()) {
+            return $this->response->setStatusCode(403)->setJSON([
+                'status' => 'error', 
+                'message' => 'Acceso no autorizado.'
+            ]);
+        }
+
+        $pedidoModel = new \App\Models\PedidoModel();
+        $id = $this->request->getPost('id');
+        $motivo = $this->request->getPost('motivo');
+
+        if (!$id) {
+            return $this->response->setJSON([
+                'status' => 'error', 
+                'message' => 'ID de pedido no proporcionado.'
+            ]);
+        }
+
+        $pedido = $pedidoModel->find($id);
+        if (!$pedido) {
+            return $this->response->setJSON([
+                'status' => 'error', 
+                'message' => 'El pedido especificado no existe.'
+            ]);
+        }
+
+        if ($pedido['estado'] === 'entregado') {
+            return $this->response->setJSON([
+                'status' => 'error', 
+                'message' => 'No se puede cancelar un pedido que ya fue entregado.'
+            ]);
+        }
+
+        if ($pedido['estado'] === 'cancelado') {
+            return $this->response->setJSON([
+                'status' => 'error', 
+                'message' => 'Este pedido ya se encontraba cancelado.'
+            ]);
+        }
+
+        // Actualizamos el estado del pedido
+        $actualizado = $pedidoModel->update($id, [
+            'estado' => 'cancelado',
+            'observaciones_cancelacion' => $motivo ? trim($motivo) : 'Cancelado por error en mostrador'
+        ]);
+
+        if ($actualizado) {
+            return $this->response->setJSON([
+                'status' => 'success',
+                'message' => 'Pedido cancelado correctamente. El stock ha sido liberado.'
+            ]);
+        }
+
+        return $this->response->setJSON([
+            'status' => 'error', 
+            'message' => 'Error al intentar actualizar la base de datos.'
         ]);
     }
 }

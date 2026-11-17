@@ -199,7 +199,8 @@ class PermisosController extends BaseController
         $nuevoPassword = $this->request->getPost('password');
         $nuevoGrupo    = $this->request->getPost('grupo');
         $nuevoEstado   = (int) $this->request->getPost('active'); // 1 o 0
-        $sucursalId = $this->request->getPost('sucursal_id');
+        $sucursalId    = $this->request->getPost('sucursal_id');
+        $nip           = $this->request->getPost('nip');
 
         if (!$userId || empty($nuevoUsername) || empty($nuevoEmail)) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'El ID, usuario y correo son obligatorios.']);
@@ -219,6 +220,7 @@ class PermisosController extends BaseController
         $user->username = $nuevoUsername;
         $user->active   = $nuevoEstado;
         $user->sucursal_id   = $sucursalId;
+        $user->nip   = $nip;
         $usersModel->save($user);
 
         // 2. Actualizar Email y Contraseña opcional en 'auth_identities'

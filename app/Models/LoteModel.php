@@ -17,7 +17,10 @@ class LoteModel extends Model
         'comprobante', 
         'observaciones', 
         'fecha_recepcion', 
-        'sucursal_id'
+        'sucursal_id', 
+        'jaulas', 
+        'piezas_por_jaula', 
+        'precio_venta'
     ];
     protected $useTimestamps = true;
     protected $createdField  = 'created_at';

@@ -76,6 +76,15 @@ class ProduccionController extends BaseController
         $piezasTotales  = (int) $this->request->getPost('mockPiezas'); // Calculado por jaulas * piezas_por_jaula
         $pesoTotal      = (float) ($this->request->getPost('mockPeso') ?? 0);
         $costoUnitario  = (float) $this->request->getPost('mockCosto');
+        $precioVenta    = (float) $this->request->getPost('precio_venta');
+
+        // 2. Actualizas el precio de venta en el catálogo de productos automáticamente
+        if ($precioVenta) {
+            $db = \Config\Database::connect();
+            $db->table('catalogo_productos')
+            ->like('LOWER(nombre)', strtolower($tipoAve))
+            ->update(['precio_venta_actual' => $precioVenta]);
+        }
 
         // Validación básica de seguridad
         if (empty($proveedorId) || empty($tipoAve) || $piezasTotales <= 0) {
@@ -116,12 +125,12 @@ class ProduccionController extends BaseController
                 'costo_unitario'   => $costoUnitario,
                 'comprobante'      => $nombreArchivo, // Puede ser null si no se subió archivo
                 'fecha_recepcion'  => date('Y-m-d'),
-                'sucursal_id'  => $sucursalId // <-- ¡Importante guardar este campo!
+                'precio_venta'      => $precioVenta // <-- ¡Importante guardar este campo!
             ]);
 
             return $this->response->setJSON([
                 'status'  => 'success',
-                'message' => '¡Lote capturado y registrado con éxito!'
+                'message' => '¡Lote capturado y registrado con éxito!',
             ]);
 
         } catch (\Exception $e) {
