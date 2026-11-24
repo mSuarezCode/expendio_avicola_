@@ -145,45 +145,79 @@ class DashboardController extends BaseController
         $pedidoModel = new \App\Models\PedidoModel();
         $clienteModel = new \App\Models\ClienteModel();
 
-        $clienteNombre = $this->request->getPost('cliente');
-        $telefono = $this->request->getPost('telefono');
-        $tipoEntrega = $this->request->getPost('tipo_entrega');
-        $tipoPago = $this->request->getPost('tipo_pago'); // Captura correcta
-        $colonia = $this->request->getPost('colonia');
-        $direccion = $this->request->getPost('direccion');
-        $referencia = $this->request->getPost('referencia');
-        $total = $this->request->getPost('total');
-        $itemsJson = $this->request->getPost('items');
+        $clienteNombre = trim((string) $this->request->getPost('cliente'));
+        $telefono      = trim((string) $this->request->getPost('telefono'));
+        $tipoEntrega   = $this->request->getPost('tipo_entrega');
+        $tipoPago      = $this->request->getPost('tipo_pago');
+        $colonia       = $this->request->getPost('colonia');
+        $direccion     = $this->request->getPost('direccion');
+        $referencia    = $this->request->getPost('referencia');
+        $total         = $this->request->getPost('total');
+        $itemsJson     = $this->request->getPost('items');
 
-        // 1. GESTIÓN DE CLIENTES: Buscar si ya existe por teléfono o registrarlo
-        $clienteExistente = $clienteModel->where('telefono', $telefono)->first();
+        $total            = (float) $this->request->getPost('total');
+        $montoEfectivo    = (float) $this->request->getPost('monto_efectivo');
+        $montoTransferencia = (float) $this->request->getPost('monto_transferencia');
 
-        if ($clienteExistente) {
-            $clienteId = $clienteExistente['id'];
-            $clienteModel->update($clienteId, [
-                'nombre'       => $clienteNombre,
-                'tipo_entrega' => $tipoEntrega,
-                'colonia'      => $colonia,
-                'direccion'    => $direccion,
-                'referencia'   => $referencia
-            ]);
-        } else {
-            $clienteId = $clienteModel->insert([
-                'telefono'     => $telefono,
-                'nombre'       => $clienteNombre,
-                'tipo_entrega' => $tipoEntrega,
-                'colonia'      => $colonia,
-                'direccion'    => $direccion,
-                'referencia'   => $referencia
-            ]);
+        if ($tipoPago === 'efectivo') {
+            $montoEfectivo = $total;
+            $montoTransferencia = 0.00;
+        } elseif ($tipoPago === 'transferencia') {
+            $montoEfectivo = 0.00;
+            $montoTransferencia = $total;
+        } elseif ($tipoPago === 'mixto') {
+            if ($montoEfectivo <= 0 || $montoTransferencia <= 0 || abs(($montoEfectivo + $montoTransferencia) - $total) > 0.01) {
+                return $this->response->setJSON([
+                    'status'  => 'error',
+                    'message' => 'Los montos del pago mixto no coinciden con el total del pedido.'
+                ]);
+            }
         }
 
-        // 2. GUARDAR EL PEDIDO VINCULADO AL CLIENTE
+        $clienteId = null;
+
+        // 1. GESTIÓN DE CLIENTES: Solo registrar/actualizar en catálogo cuando sea entrega a domicilio
+        // o cuando se proporcione un teléfono válido distinto de 'N/A'
+        if ($tipoEntrega === 'domicilio' && !empty($telefono) && $telefono !== 'N/A') {
+            $clienteExistente = $clienteModel->where('telefono', $telefono)->first();
+
+            if ($clienteExistente) {
+                $clienteId = $clienteExistente['id'];
+                $clienteModel->update($clienteId, [
+                    'nombre'       => $clienteNombre,
+                    'tipo_entrega' => $tipoEntrega,
+                    'colonia'      => $colonia,
+                    'direccion'    => $direccion,
+                    'referencia'   => $referencia
+                ]);
+            } else {
+                $clienteId = $clienteModel->insert([
+                    'telefono'     => $telefono,
+                    'nombre'       => $clienteNombre,
+                    'tipo_entrega' => $tipoEntrega,
+                    'colonia'      => $colonia,
+                    'direccion'    => $direccion,
+                    'referencia'   => $referencia
+                ]);
+            }
+        } else {
+            // Respaldo por si la petición llega sin valores desde mostrador
+            if (empty($clienteNombre)) {
+                $clienteNombre = 'Cliente Mostrador';
+            }
+            if (empty($telefono)) {
+                $telefono = 'N/A';
+            }
+            $colonia    = '';
+            $direccion  = 'Recoge en mostrador';
+            $referencia = '';
+        }
+
+        // 2. GUARDAR EL PEDIDO VINCULADO AL CLIENTE (O SIN CLIENTE DE CATÁLOGO SI ES MOSTRADOR)
         $db->transStart();
 
-
         $pedidoModel->insert([
-            'sucursal_id'  => $sucursalActivaId, // <--- ¡Añade esta línea para vincularlo a la sucursal activa!
+            'sucursal_id'  => $sucursalActivaId,
             'cliente_id'   => $clienteId,
             'cliente'      => $clienteNombre,
             'telefono'     => $telefono,
@@ -194,7 +228,7 @@ class DashboardController extends BaseController
             'total'        => $total,
             'estado'       => 'pendiente',
             'repartidor'   => $tipoEntrega === 'tienda' ? 'N/A' : 'Sin asignar',
-            'tipo_pago'    => $tipoPago, // <--- ¡AQUÍ ESTABA EL DETALLE! Agregamos esta línea
+            'tipo_pago'    => $tipoPago,
         ]);
         $pedidoId = $pedidoModel->getInsertID();
 
@@ -219,10 +253,10 @@ class DashboardController extends BaseController
         }
 
         return $this->response->setJSON([
-            'status' => 'success',
-            'folio'  => $pedidoId,
-            'message' => '¡Pedido registrado con éxito!',
-            'tipoPago' => $tipoPago,
+            'status'      => 'success',
+            'folio'       => $pedidoId,
+            'message'     => '¡Pedido registrado con éxito!',
+            'tipoPago'    => $tipoPago,
             'sucursal_id' => $sucursalActivaId
         ]);
     }

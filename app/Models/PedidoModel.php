@@ -21,6 +21,8 @@ class PedidoModel extends Model
         'pago_verificado', 
         'sucursal_id',
         'observaciones_cancelacion',
+        'monto_efectivo',
+        'monto_transferencia',
         ];
     protected $useTimestamps    = true;
     protected $createdField     = 'created_at';

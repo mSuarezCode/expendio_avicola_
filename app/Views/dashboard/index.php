@@ -405,10 +405,13 @@
                                         <?php 
                                             $tipoPago = $p['tipo_pago'] ?? 'efectivo';
                                             $esTransferencia = ($tipoPago === 'transferencia');
+                                            $esMixto = ($tipoPago === 'mixto');
                                             $verificado = isset($p['pago_verificado']) && $p['pago_verificado'] == 1;
+                                            $montoEf = (float) ($p['monto_efectivo'] ?? 0);
+                                            $montoTr = (float) ($p['monto_transferencia'] ?? 0);
                                             
-                                            // Si es transferencia y NO está verificado, resalta el renglón
-                                            $claseFila = ($esTransferencia && !$verificado) ? 'table-warning' : '';
+                                            // Resalta si es transferencia sin verificar o si es mixto sin verificar
+                                            $claseFila = (($esTransferencia || $esMixto) && !$verificado) ? 'table-warning' : '';
                                         ?>
                                         <tr id="fila-pedido-<?= $p['id'] ?>" class="<?= $claseFila ?>">
                                             <td><span class="badge bg-secondary">#<?= $p['id'] ?></span></td>
@@ -421,10 +424,21 @@
                                                     <?php if ($verificado): ?>
                                                         <span class="badge bg-primary text-white" title="Transferencia Verificada"><i class="fa-solid fa-circle-check me-1"></i> Transferencia</span>
                                                     <?php else: ?>
-                                                        <button type="button" class="btn btn-sm btn-warning text-dark fw-bold border shadow-sm" onclick="abrirModalVerificarTransferencia(<?= $p['id'] ?>, '<?= addslashes($p['cliente']) ?>', <?= $p['total'] ?>)" title="Clic para verificar transferencia">
+                                                        <button type="button" class="btn btn-sm btn-warning text-dark fw-bold border shadow-sm" onclick="abrirModalVerificarTransferencia(<?= $p['id'] ?>, '<?= esc($p['cliente'], 'js') ?>', <?= $p['total'] ?>)" title="Clic para verificar transferencia">
                                                             <i class="fa-solid fa-mobile-screen-button me-1"></i> Transferencia
                                                         </button>
                                                     <?php endif; ?>
+                                                <?php elseif ($esMixto): ?>
+                                                    <div class="d-flex flex-column align-items-start gap-1">
+                                                        <span class="badge bg-success text-white">Efec: $<?= number_format($montoEf, 2) ?></span>
+                                                        <?php if ($verificado): ?>
+                                                            <span class="badge bg-primary text-white" title="Transferencia Verificada"><i class="fa-solid fa-circle-check me-1"></i> Transf: $<?= number_format($montoTr, 2) ?></span>
+                                                        <?php else: ?>
+                                                            <button type="button" class="btn btn-sm btn-warning text-dark fw-bold border shadow-sm py-0 px-2" onclick="abrirModalVerificarTransferencia(<?= $p['id'] ?>, '<?= esc($p['cliente'], 'js') ?>', <?= $montoTr ?>)" title="Clic para verificar la parte de transferencia">
+                                                                <i class="fa-solid fa-mobile-screen-button me-1"></i> Transf: $<?= number_format($montoTr, 2) ?>
+                                                            </button>
+                                                        <?php endif; ?>
+                                                    </div>
                                                 <?php else: ?>
                                                     <span class="badge bg-success text-white">Efectivo</span>
                                                 <?php endif; ?>
@@ -465,12 +479,15 @@
                                                     <?php endif; ?>
                                                     <button class="btn btn-sm btn-outline-dark" onclick="reimprimirTicket({
                                                         id: '<?= $p['id'] ?>',
-                                                        cliente: '<?= addslashes($p['cliente']) ?>',
-                                                        tel: '<?= addslashes($p['telefono']) ?>',
-                                                        tipo: '<?= addslashes($p['tipo_entrega']) ?>',
-                                                        direccion: '<?= addslashes($p['direccion'] ?? $p['colonia']) ?>',
-                                                        repartidor: '<?= addslashes($p['repartidor']) ?>',
-                                                        total: '<?= $p['total'] ?>'
+                                                        cliente: '<?= esc($p['cliente'], 'js') ?>',
+                                                        tel: '<?= esc($p['telefono'], 'js') ?>',
+                                                        tipo: '<?= esc($p['tipo_entrega'], 'js') ?>',
+                                                        direccion: '<?= esc($p['direccion'] ?? $p['colonia'], 'js') ?>',
+                                                        repartidor: '<?= esc($p['repartidor'], 'js') ?>',
+                                                        total: '<?= $p['total'] ?>',
+                                                        tipoPago: '<?= esc($tipoPago, 'js') ?>',
+                                                        montoEfectivo: '<?= $montoEf ?>',
+                                                        montoTransferencia: '<?= $montoTr ?>'
                                                     })" title="Reimprimir Ticket">
                                                         <i class="fa-solid fa-print"></i>
                                                     </button>
@@ -1116,34 +1133,26 @@
                 <div class="modal-body">
                     <form id="formMockPedido">
                         <div class="row g-3 mb-3">
-                            <div class="col-md-6">
+                            <div class="col-md-6" id="divTelefono">
                                 <label class="form-label fw-bold">Teléfono (WhatsApp)</label>
-                                <!-- Añadimos onblur o oninput para buscar automáticamente al escribir el número -->
-                                <input type="text" class="form-control" id="pedTelefono" placeholder="Ej: 9931234567" oninput="buscarClientePorTelefono(this.value)" required>
+                                <input type="text" class="form-control" id="pedTelefono" placeholder="Ej: 9931234567" oninput="buscarClientePorTelefono(this.value)">
                                 <small class="text-muted">Escribe el número para autocompletar datos guardados.</small>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-6" id="divCliente">
                                 <label class="form-label fw-bold">Nombre del Cliente</label>
-                                <input type="text" class="form-control" id="pedCliente" placeholder="Ej: Juan Pérez" list="listaClientes" oninput="seleccionarClientePorNombre(this.value)" required>
+                                <input type="text" class="form-control" id="pedCliente" placeholder="Ej: Juan Pérez" list="listaClientes" oninput="seleccionarClientePorNombre(this.value)">
                                 <datalist id="listaClientes">
                                     <!-- Se llena dinámicamente con AJAX -->
                                 </datalist>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 <label class="form-label fw-bold">Tipo de Entrega</label>
                                 <select class="form-select" id="pedTipoEntrega" onchange="toggleDireccion(this.value)">
                                     <option value="domicilio">Entrega a Domicilio</option>
                                     <option value="tienda">Recolección en Tienda</option>
                                 </select>
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold">Tipo de Pago</label>
-                                <select class="form-select" id="pedTipoPago" name="pedTipoPago" required>
-                                    <option value="efectivo">Efectivo</option>
-                                    <option value="transferencia">Transferencia</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4" id="divColonia">
+                            <div class="col-md-6" id="divColonia">
                                 <label class="form-label fw-bold">Colonia / Sector</label>
                                 <input type="text" class="form-control" id="pedColonia" placeholder="Ej: Centro / Atasta">
                             </div>
@@ -1151,7 +1160,6 @@
                                 <label class="form-label fw-bold">Dirección Completa</label>
                                 <input type="text" class="form-control" id="pedDireccion" placeholder="Calle, número exterior/interior">
                             </div>
-                            <!-- NUEVO APARTADO DE REFERENCIAS PARA DOMICILIO -->
                             <div class="col-md-12" id="divReferencia">
                                 <label class="form-label fw-bold text-secondary"><i class="fa-solid fa-map-pin me-1"></i> Referencias de Ubicación</label>
                                 <textarea class="form-control" id="pedReferencia" rows="2" placeholder="Ej: Casa de dos plantas color verde, frente al parque, zaguán negro..."></textarea>
@@ -1174,12 +1182,6 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h6 class="fw-bold text-secondary mb-0"><i class="fa-solid fa-basket-shopping me-2"></i> Detalle de Productos</h6>
-                            <button type="button" class="btn btn-sm btn-outline-warning fw-bold" onclick="autorizarDescuentoNIP()">
-                                <i class="fa-solid fa-key me-1"></i> Autorizar Descuento (NIP)
-                            </button>
-                        </div>
 
                         <table class="table table-sm mt-3">
                             <thead class="table-light">
@@ -1198,6 +1200,41 @@
 
                         <div class="text-end fw-bold fs-5 text-success mt-2">
                             Total: $<span id="lblTotalPedido">0.00</span>
+                        </div>
+                        <hr class="my-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="fw-bold text-secondary mb-0"></h6>
+                            <button type="button" class="btn btn-sm btn-outline-warning fw-bold" onclick="autorizarDescuentoNIP()">
+                                <i class="fa-solid fa-key me-1"></i> Autorizar Descuento (NIP)
+                            </button>
+                        </div>
+
+                        <hr class="my-3">
+
+                        <div class="row g-3 align-items-start">
+                            <div class="col-md-5">
+                                <label class="form-label fw-bold">Tipo de Pago</label>
+                                <select class="form-select" id="pedTipoPago" name="pedTipoPago" onchange="togglePagoMixto(this.value)" required>
+                                    <option value="efectivo">Efectivo</option>
+                                    <option value="transferencia">Transferencia</option>
+                                    <option value="mixto">Mixto (Efectivo + Transferencia)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-7">
+                                <div id="divPagoMixto" class="p-2 border rounded bg-light" style="display: none;">
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            <label class="form-label fw-bold small mb-1">Monto Efectivo</label>
+                                            <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="montoEfectivo" placeholder="0.00" oninput="calcularRestanteMixto('efectivo')">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label fw-bold small mb-1">Monto Transferencia</label>
+                                            <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="montoTransferencia" placeholder="0.00" oninput="calcularRestanteMixto('transferencia')">
+                                        </div>
+                                    </div>
+                                    <small id="msgMixto" class="text-muted d-block mt-1">Total a cubrir: $0.00</small>
+                                </div>
+                            </div>
                         </div>
                         <div class="mt-4 d-flex justify-content-between align-items-center">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -1262,8 +1299,12 @@
 
                         <hr class="my-1 border-dashed">
 
-                        <div class="text-end fw-bold fs-6 my-2">
-                            TOTAL: $<span id="tickTotal">0.00</span>
+                        <div class="d-flex justify-content-between fw-bold fs-6 border-top pt-1">
+                            <span>TOTAL:</span>
+                            <span>$<span id="tickTotal">0.00</span></span>
+                        </div>
+                        <div id="tickDesglosePago" class="small text-muted mt-1" style="display: none;">
+                            <!-- Se llena dinámicamente si es pago mixto -->
                         </div>
 
                         <div class="text-center mt-3">
@@ -2689,10 +2730,19 @@ function ejecutarCambioEstado(id, nuevoEstado, repartidor) {
 }
 
 function toggleDireccion(val) {
-    let show = val === 'domicilio';
-    document.getElementById('divColonia').style.display = show ? 'block' : 'none';
-    document.getElementById('divDireccion').style.display = show ? 'block' : 'none';
-    // Se elimina la línea que manipulaba 'divRepartidor'
+    let esDomicilio = (val === 'domicilio');
+    let displayVal = esDomicilio ? 'block' : 'none';
+
+    // Ocultar o mostrar datos de cliente y ubicación
+    document.getElementById('divTelefono').style.display = displayVal;
+    document.getElementById('divCliente').style.display = displayVal;
+    document.getElementById('divColonia').style.display = displayVal;
+    document.getElementById('divDireccion').style.display = displayVal;
+    document.getElementById('divReferencia').style.display = displayVal;
+
+    // Ajustar atributo required dinámicamente para evitar errores de validación HTML5
+    document.getElementById('pedTelefono').required = esDomicilio;
+    document.getElementById('pedCliente').required = esDomicilio;
 }
 /** 
 let proveedoresMock = [
@@ -2792,7 +2842,20 @@ function reimprimirTicket(ped) {
 
         document.getElementById('tickBodyItems').innerHTML = htmlBody;
         document.getElementById('tickTotal').innerText = parseFloat(ped.total).toFixed(2);
-
+        let divDesglose = document.getElementById('tickDesglosePago');
+        if (divDesglose) {
+            if (ped.tipoPago === 'mixto') {
+                divDesglose.style.display = 'block';
+                divDesglose.innerHTML = `
+                    <div>Pago Mixto:</div>
+                    <div>• Efectivo: $${parseFloat(ped.montoEfectivo || 0).toFixed(2)}</div>
+                    <div>• Transferencia: $${parseFloat(ped.montoTransferencia || 0).toFixed(2)}</div>
+                `;
+            } else {
+                divDesglose.style.display = 'none';
+                divDesglose.innerHTML = '';
+            }
+        }
         // Abrir el modal del ticket listo para miniprinter
         let modalTicket = new bootstrap.Modal(document.getElementById('modalTicketPrint'));
         modalTicket.show();
@@ -3255,32 +3318,65 @@ function guardarPedidoAjax(imprimir) {
         return;
     }
     
+    let tipoEntrega = document.getElementById('pedTipoEntrega').value;
     let cliente = document.getElementById('pedCliente').value.trim();
     let telefono = document.getElementById('pedTelefono').value.trim();
 
-    if (!cliente || !telefono) {
-        alert('Por favor completa el nombre del cliente y su teléfono.');
-        return;
+    // Solo exigir cliente y teléfono si es a domicilio
+    if (tipoEntrega === 'domicilio') {
+        if (!cliente || !telefono) {
+            alert('Por favor completa el nombre del cliente y su teléfono para entregas a domicilio.');
+            return;
+        }
+    } else {
+        // Valores por defecto rápidos para mostrador / recolección en tienda
+        if (!cliente) cliente = 'Cliente Mostrador';
+        if (!telefono) telefono = 'N/A';
     }
 
     // 1. BLOQUEAR EL BOTÓN Y MOSTRAR SPINNER
     let btnGuardar = document.getElementById('btnGuardarPedido');
     let textoOriginal = '';
     if (btnGuardar) {
-    console.log('llega');
         textoOriginal = btnGuardar.innerHTML;
         btnGuardar.disabled = true;
         btnGuardar.innerHTML = `<i class="fa-solid fa-spinner fa-spin me-1"></i> Guardando...`;
     }
 
     let total = itemsTemporal.reduce((sum, item) => sum + item.subtotal, 0);
-    let tipoEntrega = document.getElementById('pedTipoEntrega').value;
     let tipoPago = document.getElementById('pedTipoPago').value;
-    let colonia = document.getElementById('pedColonia') ? document.getElementById('pedColonia').value : '';
-    let direccion = document.getElementById('pedDireccion').value;
-    let referencia = document.getElementById('pedReferencia').value;
+    let colonia = (tipoEntrega === 'domicilio' && document.getElementById('pedColonia')) ? document.getElementById('pedColonia').value : '';
+    let direccion = (tipoEntrega === 'domicilio') ? document.getElementById('pedDireccion').value : '';
+    let referencia = (tipoEntrega === 'domicilio') ? document.getElementById('pedReferencia').value : '';
+
+    let montoEfectivo = 0;
+    let montoTransferencia = 0;
+
+    if (tipoPago === 'efectivo') {
+        montoEfectivo = total;
+        montoTransferencia = 0;
+    } else if (tipoPago === 'transferencia') {
+        montoEfectivo = 0;
+        montoTransferencia = total;
+    } else if (tipoPago === 'mixto') {
+        montoEfectivo = parseFloat(document.getElementById('montoEfectivo').value) || 0;
+        montoTransferencia = parseFloat(document.getElementById('montoTransferencia').value) || 0;
+
+        if (montoEfectivo <= 0 || montoTransferencia <= 0) {
+            alert('En pago mixto debes ingresar un monto mayor a 0 tanto en efectivo como en transferencia.');
+            return;
+        }
+        if (Math.abs((montoEfectivo + montoTransferencia) - total) > 0.01) {
+            alert('La suma de efectivo y transferencia debe coincidir con el total del pedido.');
+            return;
+        }
+    }
+
 
     let formData = new FormData();
+
+    formData.append('monto_efectivo', montoEfectivo.toFixed(2));
+    formData.append('monto_transferencia', montoTransferencia.toFixed(2));
     formData.append('cliente', cliente);
     formData.append('telefono', telefono);
     formData.append('tipo_entrega', tipoEntrega);
@@ -3299,7 +3395,6 @@ function guardarPedidoAjax(imprimir) {
     })
     .then(response => response.text())
     .then(text => {
-        // 2. RESTAURAR EL BOTÓN EN EL ÉXITO
         if (btnGuardar) {
             btnGuardar.disabled = false;
             btnGuardar.innerHTML = textoOriginal;
@@ -3312,7 +3407,6 @@ function guardarPedidoAjax(imprimir) {
             console.error("Respuesta del servidor no válida:", text);
             throw new Error("El servidor respondió con un formato no válido.");
         }
-        console.log(data);
 
         if (data.status === 'success') {
             let modalEl = document.getElementById('modalNuevoPedido');
@@ -3321,90 +3415,117 @@ function guardarPedidoAjax(imprimir) {
                 modalInstance.hide();
             }
 
-            if (imprimir) {
-                document.getElementById('tickFolio').innerText = `FOLIO: #${data.folio}`;
-                document.getElementById('tickFecha').innerText = new Date().toLocaleString();
-                document.getElementById('tickCliente').innerText = cliente;
-                document.getElementById('tickTel').innerText = telefono;
-                document.getElementById('tickTipo').innerText = tipoEntrega.toUpperCase();
-                document.getElementById('tickDir').innerText = (tipoEntrega === 'tienda' ? 'Recoge en mostrador' : `${direccion} (Ref: ${referencia})`);
-                document.getElementById('tickRepartidor').innerText = tipoEntrega === 'tienda' ? 'N/A' : 'Sin asignar';
+        if (imprimir) {
+            document.getElementById('tickFolio').innerText = `FOLIO: #${data.folio}`;
+            document.getElementById('tickFecha').innerText = new Date().toLocaleString();
+            document.getElementById('tickCliente').innerText = cliente;
+            document.getElementById('tickTel').innerText = telefono;
+            document.getElementById('tickTipo').innerText = tipoEntrega.toUpperCase();
+            document.getElementById('tickDir').innerText = (tipoEntrega === 'tienda' ? 'Recoge en mostrador' : `${direccion} (Ref: ${referencia})`);
+            document.getElementById('tickRepartidor').innerText = tipoEntrega === 'tienda' ? 'N/A' : 'Sin asignar';
 
-                let htmlBody = '';
-                itemsTemporal.forEach(i => {
-                    htmlBody += `
-                        <tr>
-                            <td>${i.cant}</td>
-                            <td>${i.nombre}</td>
-                            <td class="text-end">$${i.subtotal.toFixed(2)}</td>
-                        </tr>
+            let htmlBody = '';
+            itemsTemporal.forEach(i => {
+                htmlBody += `
+                    <tr>
+                        <td>${i.cant}</td>
+                        <td>${i.nombre}</td>
+                        <td class="text-end">$${i.subtotal.toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+            document.getElementById('tickBodyItems').innerHTML = htmlBody;
+            document.getElementById('tickTotal').innerText = total.toFixed(2);
+
+            let divDesglose = document.getElementById('tickDesglosePago');
+            if (divDesglose) {
+                if (tipoPago === 'mixto') {
+                    divDesglose.style.display = 'block';
+                    divDesglose.innerHTML = `
+                        <div>Pago Mixto:</div>
+                        <div>• Efectivo: $${montoEfectivo.toFixed(2)}</div>
+                        <div>• Transferencia: $${montoTransferencia.toFixed(2)}</div>
                     `;
-                });
-                document.getElementById('tickBodyItems').innerHTML = htmlBody;
-                document.getElementById('tickTotal').innerText = total.toFixed(2);
-
-                let modalTicket = new bootstrap.Modal(document.getElementById('modalTicketPrint'));
-                modalTicket.show();
-            } else {
-                alert('¡Pedido registrado con éxito en la base de datos!');
+                } else {
+                    divDesglose.style.display = 'none';
+                    divDesglose.innerHTML = '';
+                }
             }
 
-            // Inyectar el nuevo pedido directamente en la tabla de forma visual y fluida
-            let tabla = document.getElementById('tablaPedidosDb');
-            if (tabla.querySelector('td[colspan]')) {
-                tabla.innerHTML = '';
-            }
+            let modalTicket = new bootstrap.Modal(document.getElementById('modalTicketPrint'));
+            modalTicket.show();
+        }
 
-            let badgePago = tipoPago === 'transferencia' ? 'bg-primary text-white' : 'bg-success text-white';
-            let badgeRepartidor = `<span class="badge bg-light text-muted border"><i class="fa-solid fa-clock me-1"></i> Por asignar</span>`;
-            let repartidorTextoTicket = 'Sin asignar';
-            
-            if (tipoEntrega === 'tienda') {
-                badgeRepartidor = `<span class="badge bg-light text-dark border"><i class="fa-solid fa-store me-1"></i> N/A</span>`;
-                repartidorTextoTicket = 'N/A';
-            }
+        let tabla = document.getElementById('tablaPedidosDb');
+        if (tabla.querySelector('td[colspan]')) {
+            tabla.innerHTML = '';
+        }
 
-            let claseFila = (tipoPago === 'transferencia') ? 'table-warning' : '';
-            let htmlTipoPago = (tipoPago === 'transferencia') 
-                ? `<button type="button" class="btn btn-sm btn-warning text-dark fw-bold border shadow-sm" onclick="abrirModalVerificarTransferencia(${data.folio}, '${cliente.replace(/'/g, "\\'")}', ${total})" title="Clic para verificar transferencia"><i class="fa-solid fa-mobile-screen-button me-1"></i> Transferencia</button>`
-                : `<span class="badge bg-success text-white">Efectivo</span>`;
+        let badgeRepartidor = `<span class="badge bg-light text-muted border"><i class="fa-solid fa-clock me-1"></i> Por asignar</span>`;
+        let repartidorTextoTicket = 'Sin asignar';
 
-            let nuevaFila = `
-                <tr id="fila-pedido-${data.folio}" class="${claseFila}">
-                    <td><span class="badge bg-secondary">#${data.folio}</span></td>
-                    <td><strong>${cliente}</strong><br><small class="text-muted">${telefono}</small></td>
-                    <td><span class="badge bg-light text-dark border">${tipoEntrega.toUpperCase()}</span></td>
-                    <td>${htmlTipoPago}</td>
-                    <td><small>${tipoEntrega === 'tienda' ? 'Recoge en mostrador' : direccion}</small></td>
-                    <td>${badgeRepartidor}</td>
-                    <td class="text-success fw-bold">$${total.toFixed(2)}</td>
-                    <td><span class="badge bg-warning text-dark">En Producción</span></td>
-                    <td class="text-center">
-                        <div class="d-flex justify-content-center gap-1">
-                            <button class="btn btn-sm btn-outline-danger" onclick="confirmarCancelacion(${data.folio})" title="Cancelar Pedido">
-                                <i class="fa-solid fa-ban"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-dark" onclick="reimprimirTicket({
-                                id: '${data.folio}',
-                                cliente: '${cliente.replace(/'/g, "\\'")}',
-                                tel: '${telefono}',
-                                tipo: '${tipoEntrega}',
-                                direccion: '${(tipoEntrega === 'tienda' ? 'Recoge en mostrador' : direccion).replace(/'/g, "\\'")}',
-                                repartidor: '${repartidorTextoTicket}',
-                                total: '${total}'
-                            })" title="Reimprimir Ticket">
-                                <i class="fa-solid fa-print"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-success" onclick="cambiarEstadoPedido(${data.folio}, 'entregado', '${tipoEntrega}', '${repartidorTextoTicket}')">
-                                <i class="fa-solid fa-check"></i> Entregar
-                            </button>
-                        </div>
-                    </td>
-                </tr>
+        if (tipoEntrega === 'tienda') {
+            badgeRepartidor = `<span class="badge bg-light text-dark border"><i class="fa-solid fa-store me-1"></i> N/A</span>`;
+            repartidorTextoTicket = 'N/A';
+        }
+
+        let claseFila = (tipoPago === 'transferencia' || tipoPago === 'mixto') ? 'table-warning' : '';
+        let htmlTipoPago = '';
+
+        if (tipoPago === 'transferencia') {
+            htmlTipoPago = `<button type="button" class="btn btn-sm btn-warning text-dark fw-bold border shadow-sm" onclick="abrirModalVerificarTransferencia(${data.folio}, '${cliente.replace(/'/g, "\\'")}', ${total})" title="Clic para verificar transferencia"><i class="fa-solid fa-mobile-screen-button me-1"></i> Transferencia</button>`;
+        } else if (tipoPago === 'mixto') {
+            htmlTipoPago = `
+                <div class="d-flex flex-column align-items-start gap-1">
+                    <span class="badge bg-success text-white">Efec: $${montoEfectivo.toFixed(2)}</span>
+                    <button type="button" class="btn btn-sm btn-warning text-dark fw-bold border shadow-sm py-0 px-2" onclick="abrirModalVerificarTransferencia(${data.folio}, '${cliente.replace(/'/g, "\\'")}', ${montoTransferencia})" title="Clic para verificar la parte de transferencia">
+                        <i class="fa-solid fa-mobile-screen-button me-1"></i> Transf: $${montoTransferencia.toFixed(2)}
+                    </button>
+                </div>
             `;
-            tabla.insertAdjacentHTML('afterbegin', nuevaFila);
+        } else {
+            htmlTipoPago = `<span class="badge bg-success text-white">Efectivo</span>`;
+        }
+
+        let nuevaFila = `
+            <tr id="fila-pedido-${data.folio}" class="${claseFila}">
+                <td><span class="badge bg-secondary">#${data.folio}</span></td>
+                <td><strong>${cliente}</strong><br><small class="text-muted">${telefono}</small></td>
+                <td><span class="badge bg-light text-dark border">${tipoEntrega.toUpperCase()}</span></td>
+                <td>${htmlTipoPago}</td>
+                <td><small>${tipoEntrega === 'tienda' ? 'Recoge en mostrador' : direccion}</small></td>
+                <td>${badgeRepartidor}</td>
+                <td class="text-success fw-bold">$${total.toFixed(2)}</td>
+                <td><span class="badge bg-warning text-dark">En Producción</span></td>
+                <td class="text-center">
+                    <div class="d-flex justify-content-center gap-1">
+                        <button class="btn btn-sm btn-outline-danger" onclick="confirmarCancelacion(${data.folio})" title="Cancelar Pedido">
+                            <i class="fa-solid fa-ban"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="reimprimirTicket({
+                            id: '${data.folio}',
+                            cliente: '${cliente.replace(/'/g, "\\'")}',
+                            tel: '${telefono}',
+                            tipo: '${tipoEntrega}',
+                            direccion: '${(tipoEntrega === 'tienda' ? 'Recoge en mostrador' : direccion).replace(/'/g, "\\'")}',
+                            repartidor: '${repartidorTextoTicket}',
+                            total: '${total}',
+                            tipoPago: '${tipoPago}',
+                            montoEfectivo: '${montoEfectivo}',
+                            montoTransferencia: '${montoTransferencia}'
+                        })" title="Reimprimir Ticket">
+                            <i class="fa-solid fa-print"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="cambiarEstadoPedido(${data.folio}, 'entregado', '${tipoEntrega}', '${repartidorTextoTicket}')">
+                            <i class="fa-solid fa-check"></i> Entregar
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+        tabla.insertAdjacentHTML('afterbegin', nuevaFila);
             
-            // Limpiar variables temporales y formulario
+            // Limpiar variables temporales, formulario y restaurar visibilidad de campos
             itemsTemporal = [];
             descuentoAutorizado = false; 
             document.getElementById('tbodyDetallePedido').innerHTML = '<tr><td colspan="5" class="text-center text-muted fs-7">No se han añadido productos.</td></tr>';
@@ -3412,6 +3533,8 @@ function guardarPedidoAjax(imprimir) {
             
             let formPedido = document.getElementById('formMockPedido');
             if (formPedido) formPedido.reset();
+            toggleDireccion('domicilio');
+            togglePagoMixto('efectivo');
             
             actualizarMetricasCards();
         } else {
@@ -3419,7 +3542,6 @@ function guardarPedidoAjax(imprimir) {
         }
     })
     .catch(error => {
-        // 3. RESTAURAR EL BOTÓN SI OCURRE UN ERROR DE RED
         if (btnGuardar) {
             btnGuardar.disabled = false;
             btnGuardar.innerHTML = textoOriginal;
@@ -3489,6 +3611,10 @@ function renderizarDetallePedido() {
 
     document.getElementById('tbodyDetallePedido').innerHTML = html;
     document.getElementById('lblTotalPedido').innerText = total.toFixed(2);
+    let selectPago = document.getElementById('pedTipoPago');
+    if (selectPago && selectPago.value === 'mixto') {
+        togglePagoMixto('mixto');
+    }
 }
 
 // Quitar producto de la lista temporal por su índice
@@ -5042,6 +5168,7 @@ function seleccionarClientePorNombre(valor) {
 document.getElementById('modalNuevoPedido').addEventListener('show.bs.modal', function () {
     cargarClientesDatalist();
     cargarProductos();
+    toggleDireccion(document.getElementById('pedTipoEntrega').value);
 });
 
 let descuentoAutorizado = false;
@@ -6220,6 +6347,87 @@ function mostrarAlertaFlotante(mensaje, tipo = 'success') {
         const alertas = document.querySelectorAll('.alert-dismissible');
         if (alertas.length > 0) alertas[0].remove();
     }, 3500);
+}
+
+function obtenerTotalPedidoActual() {
+    if (typeof itemsTemporal !== 'undefined' && Array.isArray(itemsTemporal) && itemsTemporal.length > 0) {
+        let sumaItems = itemsTemporal.reduce((sum, item) => sum + (parseFloat(item.subtotal) || 0), 0);
+        return Number(sumaItems.toFixed(2));
+    }
+    let lblTotal = document.getElementById('lblTotalPedido');
+    if (lblTotal) {
+        let limpio = parseFloat(lblTotal.innerText.replace(/[^0-9.-]+/g, '')) || 0;
+        return Number(limpio.toFixed(2));
+    }
+    return 0;
+}
+
+function togglePagoMixto(tipoPago) {
+    let divMixto = document.getElementById('divPagoMixto');
+    let inputEf  = document.getElementById('montoEfectivo');
+    let inputTr  = document.getElementById('montoTransferencia');
+    let msg      = document.getElementById('msgMixto');
+    let total    = obtenerTotalPedidoActual();
+
+    if (inputEf) inputEf.value = '';
+    if (inputTr) inputTr.value = '';
+
+    if (tipoPago === 'mixto') {
+        if (divMixto) divMixto.style.display = 'block';
+        if (msg) {
+            msg.className = 'text-muted d-block mt-1';
+            msg.innerHTML = `Total a cubrir: <strong>$${total.toFixed(2)}</strong>`;
+        }
+    } else {
+        if (divMixto) divMixto.style.display = 'none';
+    }
+}
+
+function calcularRestanteMixto(origen) {
+    let total   = obtenerTotalPedidoActual();
+    let inputEf = document.getElementById('montoEfectivo');
+    let inputTr = document.getElementById('montoTransferencia');
+    let msg     = document.getElementById('msgMixto');
+
+    if (!inputEf || !inputTr) return;
+
+    let ef = parseFloat(inputEf.value);
+    let tr = parseFloat(inputTr.value);
+    ef = isNaN(ef) ? 0 : Math.max(0, Number(ef.toFixed(2)));
+    tr = isNaN(tr) ? 0 : Math.max(0, Number(tr.toFixed(2)));
+
+    if (origen === 'efectivo') {
+        if (ef > total) {
+            ef = total;
+            inputEf.value = ef.toFixed(2);
+        }
+        let restante = Math.max(0, Number((total - ef).toFixed(2)));
+        inputTr.value = restante.toFixed(2);
+        tr = restante;
+    } else {
+        if (tr > total) {
+            tr = total;
+            inputTr.value = tr.toFixed(2);
+        }
+        let restante = Math.max(0, Number((total - tr).toFixed(2)));
+        inputEf.value = restante.toFixed(2);
+        ef = restante;
+    }
+
+    let suma = Number((ef + tr).toFixed(2));
+
+    if (msg) {
+        if (total <= 0) {
+            msg.className = 'text-danger d-block mt-1';
+            msg.innerHTML = `Agrega productos primero (Total actual: $0.00).`;
+        } else if (Math.abs(suma - total) < 0.01) {
+            msg.className = 'text-success fw-bold d-block mt-1';
+            msg.innerHTML = `<i class="fa-solid fa-check-circle me-1"></i> Montos completos: Efec $${ef.toFixed(2)} + Transf $${tr.toFixed(2)} = $${total.toFixed(2)}`;
+        } else {
+            msg.className = 'text-danger d-block mt-1';
+            msg.innerHTML = `Suma actual: $${suma.toFixed(2)} — Debe sumar $${total.toFixed(2)}.`;
+        }
+    }
 }
 </script>
 </body>
