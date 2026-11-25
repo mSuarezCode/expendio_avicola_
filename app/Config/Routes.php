@@ -64,6 +64,7 @@ $routes->get('/clientes/json', 'DashboardController::getClientesJson');
 $routes->post('/clientes/guardar', 'DashboardController::guardarClienteDirectorio');
 
 // Rutas para el módulo de Cierre de Día y Gastos Operativos
+$routes->post('/cierre/guardar-fondo', 'CierreController::guardarFondo');
 $routes->post('/cierre/guardar-gasto', 'CierreController::guardarGasto');
 $routes->get('/cierre/resumen-json', 'CierreController::resumenJson');
 $routes->post('/cierre/procesar', 'CierreController::procesar');

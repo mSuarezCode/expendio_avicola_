@@ -217,18 +217,21 @@ class DashboardController extends BaseController
         $db->transStart();
 
         $pedidoModel->insert([
-            'sucursal_id'  => $sucursalActivaId,
-            'cliente_id'   => $clienteId,
-            'cliente'      => $clienteNombre,
-            'telefono'     => $telefono,
-            'tipo_entrega' => $tipoEntrega,
-            'colonia'      => $colonia,
-            'direccion'    => $direccion,
-            'referencia'   => $referencia,
-            'total'        => $total,
-            'estado'       => 'pendiente',
-            'repartidor'   => $tipoEntrega === 'tienda' ? 'N/A' : 'Sin asignar',
-            'tipo_pago'    => $tipoPago,
+            'sucursal_id'         => $sucursalActivaId,
+            'cliente_id'          => $clienteId,
+            'cliente'             => $clienteNombre,
+            'telefono'            => $telefono,
+            'tipo_entrega'        => $tipoEntrega,
+            'colonia'             => $colonia,
+            'direccion'           => $direccion,
+            'referencia'          => $referencia,
+            'total'               => $total,
+            'estado'              => 'pendiente',
+            'repartidor'          => $tipoEntrega === 'tienda' ? 'N/A' : 'Sin asignar',
+            'tipo_pago'           => $tipoPago,
+            'monto_efectivo'      => $montoEfectivo,
+            'monto_transferencia' => $montoTransferencia,
+            'pago_verificado'     => ($tipoPago === 'efectivo') ? 1 : 0,
         ]);
         $pedidoId = $pedidoModel->getInsertID();
 
@@ -469,36 +472,55 @@ class DashboardController extends BaseController
             ->where("DATE(created_at)", $hoy)
             ->countAllResults();
 
-        // 4. Ventas en EFECTIVO de HOY (Excluyendo cancelados y archivados)
-        $ventasEfectivo = $db->table('pedidos')
-            ->where('tipo_pago', 'efectivo')
-            ->where('sucursal_id', $sucursalActivaId)
-            ->where('estado !=', 'cancelado') // <--- AGREGAR ESTA LÍNEA
-            ->where("DATE(created_at)", $hoy)
-            ->selectSum('total')
-            ->get()
-            ->getRowArray()['total'] ?? 0;
+        // 4, 5 y 6. Ventas en EFECTIVO, TRANSFERENCIA y MIXTOS de HOY (excluyendo cancelados)
+        $camposPedidos = $db->getFieldNames('pedidos');
+        $tieneColumnasMixtas = in_array('monto_efectivo', $camposPedidos, true)
+            && in_array('monto_transferencia', $camposPedidos, true);
 
-        // 5. Ventas por TRANSFERENCIA de HOY (Excluyendo cancelados y archivados)
-        $ventasTransferencia = $db->table('pedidos')
-            ->where('tipo_pago', 'transferencia')
+        $pedidosHoy = $db->table('pedidos')
             ->where('sucursal_id', $sucursalActivaId)
-            ->where('estado !=', 'cancelado') // <--- AGREGAR ESTA LÍNEA
+            ->where('estado !=', 'cancelado')
             ->where("DATE(created_at)", $hoy)
-            ->selectSum('total')
             ->get()
-            ->getRowArray()['total'] ?? 0;
+            ->getResultArray();
 
-        // 6. Venta Total de HOY (Suma de efectivo + transferencia activos)
-        $ventaTotal = (float)$ventasEfectivo + (float)$ventasTransferencia;
+        $ventasEfectivo = 0.0;
+        $ventasTransferencia = 0.0;
+
+        foreach ($pedidosHoy as $pedido) {
+            $totalPedido = (float) ($pedido['total'] ?? 0);
+            $tipoPago = strtolower(trim((string) ($pedido['tipo_pago'] ?? 'efectivo')));
+
+            if ($tipoPago === 'transferencia') {
+                $ventasTransferencia += $totalPedido;
+            } elseif ($tipoPago === 'mixto') {
+                if ($tieneColumnasMixtas) {
+                    $ef = (float) ($pedido['monto_efectivo'] ?? 0);
+                    $tr = (float) ($pedido['monto_transferencia'] ?? 0);
+
+                    if ($ef == 0 && $tr == 0 && $totalPedido > 0) {
+                        $ef = $totalPedido;
+                    }
+
+                    $ventasEfectivo += $ef;
+                    $ventasTransferencia += $tr;
+                } else {
+                    $ventasEfectivo += $totalPedido;
+                }
+            } else {
+                $ventasEfectivo += $totalPedido;
+            }
+        }
+
+        $ventaTotal = $ventasEfectivo + $ventasTransferencia;
 
         return $this->response->setJSON([
             'pendientes'          => $pendientes,
             'en_camino'           => $enCamino,
             'entregados'          => $entregados,
             'venta_total'         => number_format($ventaTotal, 2, '.', ''),
-            'venta_efectivo'      => number_format((float)$ventasEfectivo, 2, '.', ''),
-            'venta_transferencia' => number_format((float)$ventasTransferencia, 2, '.', '')
+            'venta_efectivo'      => number_format($ventasEfectivo, 2, '.', ''),
+            'venta_transferencia' => number_format($ventasTransferencia, 2, '.', '')
         ]);
     }
 

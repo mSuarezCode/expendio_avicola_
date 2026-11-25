@@ -316,6 +316,9 @@
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h2><i class="fa-solid fa-receipt text-primary me-2"></i> Pedidos, Mostrador y Reparto</h2>
                 <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-success shadow-sm fw-bold" id="btnFondoCaja" data-bs-toggle="modal" data-bs-target="#modalFondoCaja" onclick="cargarFondoCajaActual()">
+                        <i class="fa-solid fa-cash-register me-1"></i> Fondo de Caja: <span id="lblFondoCajaBtn">$0.00</span>
+                    </button>
                     <!-- Botón de consulta rápida en la Vista de Pedidos -->
                     <button class="btn btn-outline-dark shadow-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalStockDisponibilidad" onclick="cargarTablaStockRapido()">
                         <i class="fa-solid fa-boxes-stacked me-1 text-warning"></i> Consultar Stock
@@ -2381,6 +2384,41 @@
         </div>
     </div>
 
+    <!-- Modal: Fondo Inicial de Caja del Día -->
+    <div class="modal fade" id="modalFondoCaja" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-success text-white py-2">
+                    <h6 class="modal-title fw-bold">
+                        <i class="fa-solid fa-cash-register me-1"></i> Fondo Inicial de Caja
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="formFondoCaja" onsubmit="event.preventDefault(); guardarFondoCajaAjax();">
+                    <div class="modal-body">
+                        <p class="small text-muted mb-2">
+                            Indica con cuánto efectivo inicia la caja en esta jornada:
+                        </p>
+                        <div class="mb-3">
+                            <label for="inputFondoInicial" class="form-label fw-bold small">Monto Inicial ($)</label>
+                            <input type="number" step="0.50" min="0" class="form-control form-control-lg fw-bold text-success text-end" id="inputFondoInicial" placeholder="0.00" required>
+                        </div>
+                        <div class="mb-0">
+                            <label for="inputNotasFondo" class="form-label fw-bold small">Observaciones (Opcional)</label>
+                            <input type="text" class="form-control form-control-sm" id="inputNotasFondo" placeholder="Ej: Morraya y billetes chicos">
+                        </div>
+                    </div>
+                    <div class="modal-footer py-2 bg-light">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" id="btnGuardarFondoCaja" class="btn btn-success btn-sm fw-bold">
+                            <i class="fa-solid fa-check me-1"></i> Guardar Fondo
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Bootstrap 5 JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
@@ -3102,63 +3140,56 @@ function enviarManifiestoWhatsApp() {
     let telRepartidor = repRaw[1];
     let numViaje = Math.floor(Math.random() * 90) + 10;
     let totalCobrar = 0;
-    
+
     let resumenCarga = {};
     let idsAsignados = [];
 
-    let msj = `🛵 *MANIFIESTO DE CARGA - EXPENDIO AVÍCOLA*\n`;
-    msj += `----------------------------------\n`;
-    msj += `👤 *Repartidor:* ${nombreRepartidor}\n`;
-    msj += `📅 *Fecha:* ${new Date().toLocaleDateString()}\n`;
-    msj += `📦 *Viaje #V-${numViaje}* (${seleccionados.length} Pedidos en Ruta)\n\n`;
-    msj += `📍 *ENTREGAS EN RUTA:*\n`;
+    let msj = `🛵 *RUTA #V-${numViaje}* | ${nombreRepartidor} (${new Date().toLocaleDateString()})\n`;
+    msj += `Pedidos: ${seleccionados.length}\n\n`;
 
-    let index = 1;
-    seleccionados.forEach(chk => {
+    seleccionados.forEach((chk, idx) => {
         let pedId = parseInt(chk.value);
         let ped = window.pedidosPendientesCache.find(x => parseInt(x.id) === pedId);
-        
+
         if (ped) {
-            totalCobrar += parseFloat(ped.total);
+            let montoPed = parseFloat(ped.total) || 0;
+            totalCobrar += montoPed;
             idsAsignados.push(ped.id);
-            
-            msj += `${index}️⃣ *Folio #${ped.id}* - ${ped.cliente}\n`;
-            msj += `   📞 Tel: ${ped.telefono}\n`;
-            msj += `   🏠 Dir: ${ped.direccion || ped.colonia}\n`;
-            
-            // >>> AGREGAMOS ESTA LÍNEA PARA INCLUIR LA REFERENCIA EN EL MENSAJE <<<
-            if (ped.referencia) {
-                msj += `   📍 *Ref:* ${ped.referencia}\n`;
-            }
 
-            msj += `   🍗 *Productos:*\n`;
+            let dir = ped.direccion || ped.colonia || 'Sin dirección';
+            let ref = ped.referencia ? ` (Ref: ${ped.referencia})` : '';
+
+            msj += `*${idx + 1}. #${ped.id} - ${ped.cliente}* (${ped.telefono || 'S/T'})\n`;
+            msj += `📍 ${dir}${ref}\n`;
+
             if (ped.productos && ped.productos.length > 0) {
-                ped.productos.forEach(prod => {
-                    msj += `      - ${prod.cantidad}x ${prod.nombre} ($${parseFloat(prod.subtotal).toFixed(2)})\n`;
+                let listaProd = ped.productos.map(prod => {
+                    let cantNum = parseFloat(prod.cantidad) || 0;
+                    let subNum = parseFloat(prod.subtotal) || 0;
+
                     if (resumenCarga[prod.nombre]) {
-                        resumenCarga[prod.nombre] += parseFloat(prod.cantidad);
+                        resumenCarga[prod.nombre] += cantNum;
                     } else {
-                        resumenCarga[prod.nombre] = parseFloat(prod.cantidad);
+                        resumenCarga[prod.nombre] = cantNum;
                     }
-                });
+
+                    return `${cantNum} ${prod.nombre} ($${subNum.toFixed(2)})`;
+                }).join(', ');
+
+                msj += `🍗 ${listaProd}\n`;
             } else {
-                msj += `      - 1x Venta General ($${parseFloat(ped.total).toFixed(2)})\n`;
+                msj += `🍗 Venta General ($${montoPed.toFixed(2)})\n`;
             }
 
-            msj += `   💵 *Importe a Cobrar:* $${parseFloat(ped.total).toFixed(2)}\n\n`;
-            index++;
+            msj += `💵 Cobrar: *$${montoPed.toFixed(2)}*\n\n`;
         }
     });
 
-    msj += `📦 *RESUMEN TOTAL DE CARGA:*\n`;
+    msj += `📦 *CARGA TOTAL:*\n`;
     for (let [item, cantidad] of Object.entries(resumenCarga)) {
-        msj += `   - ${cantidad}x ${item}\n`;
+        msj += `• ${cantidad} ${item}\n`;
     }
-    msj += `\n`;
-
-    msj += `💰 *TOTAL A LIQUIDAR EN CAJA:* $${totalCobrar.toFixed(2)}\n`;
-    msj += `----------------------------------\n`;
-    msj += `_Por favor confirmar recepción al salir. ¡Buen viaje!_`;
+    msj += `\n💰 *TOTAL A ENTREGAR EN CAJA: $${totalCobrar.toFixed(2)}*`;
 
     // 1. Ocultar el modal de forma limpia
     let modalEl = document.getElementById('modalArmarViaje');
@@ -3187,15 +3218,14 @@ function enviarManifiestoWhatsApp() {
             if (badgeFolio && badgeFolio.textContent.trim() === `#${id}`) {
                 let celdas = fila.querySelectorAll('td');
                 if (celdas.length >= 9) {
-                    celdas[5].innerHTML = `<span class="fw-bold text-dark"><i class="fa-solid fa-motorcycle text-primary me-1"></i> ${nombreRepartidor}</span>`; // Repartidor en índice 5
-                    celdas[7].innerHTML = `<span class="badge bg-info text-white">En Camino</span>`; // Estado en índice 7
+                    celdas[5].innerHTML = `<span class="fw-bold text-dark"><i class="fa-solid fa-motorcycle text-primary me-1"></i> ${nombreRepartidor}</span>`;
+                    celdas[7].innerHTML = `<span class="badge bg-info text-white">En Camino</span>`;
 
-                    let tdAccion = celdas[8].querySelector('div'); 
+                    let tdAccion = celdas[8].querySelector('div');
                     if (tdAccion) {
                         let btnImprimir = tdAccion.querySelector('button[title="Reimprimir Ticket"]').outerHTML;
                         tdAccion.innerHTML = `
                             ${btnImprimir}
-                            <!-- 🛠️ CORREGIDO: Pasando 'domicilio' y el nombre del repartidor asignado -->
                             <button class="btn btn-sm btn-outline-success" onclick="cambiarEstadoPedido(${id}, 'entregado', 'domicilio', '${nombreRepartidor}')">
                                 <i class="fa-solid fa-check"></i> Entregar
                             </button>
@@ -5627,6 +5657,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (typeof cargarReportesDinamicos === 'function') {
         cargarReportesDinamicos();
     }
+    if (typeof cargarFondoCajaActual === 'function') {
+        cargarFondoCajaActual();
+    }
 });
 
 // Cargar la lista de usuarios y sus grupos desde el servidor
@@ -6428,6 +6461,115 @@ function calcularRestanteMixto(origen) {
             msg.innerHTML = `Suma actual: $${suma.toFixed(2)} — Debe sumar $${total.toFixed(2)}.`;
         }
     }
+}
+
+function actualizarBadgeFondoCaja(monto) {
+    let valor = parseFloat(monto) || 0;
+    let lblBtn = document.getElementById('lblFondoCajaBtn');
+    let btn    = document.getElementById('btnFondoCaja');
+    let cierre = document.getElementById('cierreFondo');
+
+    if (lblBtn) {
+        lblBtn.innerText = `$${valor.toFixed(2)}`;
+    }
+    if (cierre) {
+        cierre.innerText = `$${valor.toFixed(2)}`;
+    }
+    if (btn) {
+        if (valor > 0) {
+            btn.classList.remove('btn-outline-warning', 'text-dark');
+            btn.classList.add('btn-outline-success');
+        } else {
+            btn.classList.remove('btn-outline-success');
+            btn.classList.add('btn-outline-warning', 'text-dark');
+        }
+    }
+}
+
+function cargarFondoCajaActual() {
+    let inputMonto = document.getElementById('inputFondoInicial');
+    let inputNotas = document.getElementById('inputNotasFondo');
+    if (inputNotas) inputNotas.value = '';
+
+    fetch('<?= base_url('/cierre/resumen-json') ?>', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(res => res.json())
+    .then(response => {
+        if (response && response.status === 'success' && response.data) {
+            let fondo = parseFloat(response.data.fondo_inicial) || 0;
+            if (inputMonto) {
+                inputMonto.value = fondo > 0 ? fondo.toFixed(2) : '';
+            }
+            actualizarBadgeFondoCaja(fondo);
+        }
+    })
+    .catch(err => console.error('Error al consultar fondo de caja:', err));
+}
+
+function guardarFondoCajaAjax() {
+    let inputMonto = document.getElementById('inputFondoInicial');
+    let inputNotas = document.getElementById('inputNotasFondo');
+    let btnGuardar = document.getElementById('btnGuardarFondoCaja');
+
+    let monto = parseFloat(inputMonto ? inputMonto.value : 0);
+    let notas = inputNotas ? inputNotas.value.trim() : '';
+
+    if (isNaN(monto) || monto < 0) {
+        alert('Por favor ingresa un monto inicial válido (0 o mayor).');
+        return;
+    }
+
+    let textoOriginal = btnGuardar ? btnGuardar.innerHTML : '';
+    if (btnGuardar) {
+        btnGuardar.disabled = true;
+        btnGuardar.innerHTML = `<i class="fa-solid fa-spinner fa-spin me-1"></i> Guardando...`;
+    }
+
+    let formData = new FormData();
+    formData.append('fondo_inicial', monto.toFixed(2));
+    formData.append('observaciones', notas);
+    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+
+    fetch('<?= base_url('/cierre/guardar-fondo') ?>', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (btnGuardar) {
+            btnGuardar.disabled = false;
+            btnGuardar.innerHTML = textoOriginal;
+        }
+
+        if (data.status === 'success') {
+            let modalEl = document.getElementById('modalFondoCaja');
+            let modalInstance = bootstrap.Modal.getInstance(modalEl);
+            if (modalInstance) modalInstance.hide();
+
+            actualizarBadgeFondoCaja(monto);
+
+            if (typeof cargarResumenCierre === 'function') {
+                cargarResumenCierre();
+            }
+            if (typeof mostrarAlertaFlotante === 'function') {
+                mostrarAlertaFlotante(data.message || 'Fondo inicial de caja guardado.', 'success');
+            } else {
+                alert(data.message || 'Fondo inicial de caja guardado.');
+            }
+        } else {
+            alert('Error: ' + (data.message || 'No se pudo guardar el fondo de caja.'));
+        }
+    })
+    .catch(err => {
+        console.error('Error al guardar fondo de caja:', err);
+        if (btnGuardar) {
+            btnGuardar.disabled = false;
+            btnGuardar.innerHTML = textoOriginal;
+        }
+        alert('Ocurrió un error al comunicarse con el servidor.');
+    });
 }
 </script>
 </body>

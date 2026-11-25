@@ -11,6 +11,104 @@ class CierreController extends BaseController
         //
     }
 
+    private function asegurarTablaFondos($db)
+    {
+        $db->query("CREATE TABLE IF NOT EXISTS fondos_caja (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            sucursal_id INT NOT NULL DEFAULT 1,
+            fecha DATE NOT NULL,
+            monto DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+            observaciones TEXT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NULL,
+            UNIQUE KEY uk_sucursal_fecha (sucursal_id, fecha)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    }
+
+    private function obtenerSucursalActivaId(): int
+    {
+        $sucursalId = (int) (session()->get('sucursal_activa_id') ?? 0);
+        if ($sucursalId > 0) {
+            return $sucursalId;
+        }
+
+        $user = auth()->user();
+        if ($user && !empty($user->sucursal_id)) {
+            return (int) $user->sucursal_id;
+        }
+
+        return 1;
+    }
+
+    private function obtenerFondoInicialHoy($db, string $fecha, int $sucursalId): float
+    {
+        $this->asegurarTablaFondos($db);
+
+        $registro = $db->table('fondos_caja')
+            ->where('sucursal_id', $sucursalId)
+            ->where('fecha', $fecha)
+            ->get()
+            ->getRowArray();
+
+        if ($registro !== null) {
+            return (float) ($registro['monto'] ?? 0);
+        }
+
+        // Si aún no se ha capturado fondo para hoy, inicia en 0.00 (o cámbialo a 1000.00 si deseas default)
+        return 0.00;
+    }
+
+    // 0. Guardar o actualizar el fondo inicial de caja del día (AJAX)
+    public function guardarFondo()
+    {
+        $monto = (float) ($this->request->getPost('fondo_inicial') ?? 0);
+        $observaciones = trim((string) ($this->request->getPost('observaciones') ?? ''));
+
+        if ($monto < 0) {
+            return $this->response->setJSON([
+                'status'  => 'error',
+                'message' => 'El fondo inicial no puede ser negativo.'
+            ]);
+        }
+
+        $hoy = date('Y-m-d');
+        $sucursalId = $this->obtenerSucursalActivaId();
+        $ahora = date('Y-m-d H:i:s');
+
+        $db = \Config\Database::connect();
+        $this->asegurarTablaFondos($db);
+
+        $existente = $db->table('fondos_caja')
+            ->where('sucursal_id', $sucursalId)
+            ->where('fecha', $hoy)
+            ->get()
+            ->getRowArray();
+
+        if ($existente) {
+            $db->table('fondos_caja')
+                ->where('id', $existente['id'])
+                ->update([
+                    'monto'         => number_format($monto, 2, '.', ''),
+                    'observaciones' => $observaciones,
+                    'updated_at'    => $ahora
+                ]);
+        } else {
+            $db->table('fondos_caja')->insert([
+                'sucursal_id'   => $sucursalId,
+                'fecha'         => $hoy,
+                'monto'         => number_format($monto, 2, '.', ''),
+                'observaciones' => $observaciones,
+                'created_at'    => $ahora
+            ]);
+        }
+
+        return $this->response->setJSON([
+            'status'         => 'success',
+            'message'        => '¡Fondo inicial de caja guardado correctamente!',
+            'fondo_inicial'  => (float) number_format($monto, 2, '.', '')
+        ]);
+    }
+
     // 1. Guardar gasto rápido en caja chica (AJAX)
     public function guardarGasto() {
         $tipo = $this->request->getPost('tipo_gasto') ?? 'varios';
@@ -147,25 +245,8 @@ class CierreController extends BaseController
     // 2. Obtener resumen financiero separando efectivo y transferencias (AJAX)
     public function resumenJson() {
         $hoy = date('Y-m-d');
+        $sucursalId = $this->obtenerSucursalActivaId();
         $db = \Config\Database::connect();
-
-        // Ventas exclusivas en EFECTIVO
-        $ventasEfectivoQuery = $db->table('pedidos')
-            ->selectSum('total', 'total_efectivo')
-            ->where("DATE(created_at)", $hoy)
-            ->where("estado !=", "cancelado")
-            ->where("tipo_pago", "efectivo")
-            ->get()
-            ->getRowArray();
-
-        // Ventas exclusivas por TRANSFERENCIA
-        $ventasTransfQuery = $db->table('pedidos')
-            ->selectSum('total', 'total_transferencia')
-            ->where("DATE(created_at)", $hoy)
-            ->where("estado !=", "cancelado")
-            ->where("tipo_pago", "transferencia")
-            ->get()
-            ->getRowArray();
 
         // Total de gastos del día
         $gastosTotalQuery = $db->table('gastos_caja')
@@ -203,10 +284,11 @@ class CierreController extends BaseController
             }
         }
 
-        $ventasEfectivo = (float) ($ventasEfectivoQuery['total_efectivo'] ?? 0);
-        $ventasTransferencia = (float) ($ventasTransfQuery['total_transferencia'] ?? 0);
+        $totalesPago = $this->calcularTotalesPagoDia($db, $hoy, $sucursalId);
+        $ventasEfectivo = (float) $totalesPago['ventas_efectivo'];
+        $ventasTransferencia = (float) $totalesPago['ventas_transferencia'];
         $totalGastos = (float) ($gastosTotalQuery['total_gastos'] ?? 0);
-        $fondoInicial = 1000.00; 
+        $fondoInicial = $this->obtenerFondoInicialHoy($db, $hoy, $sucursalId);
 
         $efectivoEsperado = ($fondoInicial + $ventasEfectivo) - $totalGastos;
 
@@ -217,7 +299,7 @@ class CierreController extends BaseController
                 'ventas_efectivo'      => $ventasEfectivo,
                 'ventas_transferencia' => $ventasTransferencia,
                 'total_gastos'         => $totalGastos,
-                'gastos_detalle'       => $gastosDetalle, // 👈 Enviamos el desglose
+                'gastos_detalle'       => $gastosDetalle,
                 'efectivo_esperado'    => $efectivoEsperado,
                 'stock_aves'           => (int) $stockAves,
                 'stock_cortes_kg'      => (float) $stockCortesKg,
@@ -229,6 +311,7 @@ class CierreController extends BaseController
     // 3. Procesar Cierre Final del Día con validación de pendientes
     public function procesar() {
         $hoy = date('Y-m-d');
+        $sucursalId = $this->obtenerSucursalActivaId();
         $db = \Config\Database::connect();
 
         // 🛑 FRENO DE SEGURIDAD: Verificar si existen pedidos pendientes o en camino
@@ -272,34 +355,17 @@ class CierreController extends BaseController
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-        // Ventas en efectivo
-        $ventasEfectivoQuery = $db->table('pedidos')
-            ->selectSum('total', 'total_efectivo')
-            ->where("DATE(created_at)", $hoy)
-            ->where("estado !=", "cancelado")
-            ->where("tipo_pago", "efectivo")
-            ->get()
-            ->getRowArray();
-
-        // Ventas por transferencia
-        $ventasTransfQuery = $db->table('pedidos')
-            ->selectSum('total', 'total_transferencia')
-            ->where("DATE(created_at)", $hoy)
-            ->where("estado !=", "cancelado")
-            ->where("tipo_pago", "transferencia")
-            ->get()
-            ->getRowArray();
-
         $gastos = $db->table('gastos_caja')
             ->selectSum('monto', 'total_gastos')
             ->where("DATE(created_at)", $hoy)
             ->get()
             ->getRowArray();
 
-        $ventasEfectivo = (float) ($ventasEfectivoQuery['total_efectivo'] ?? 0);
-        $ventasTransferencia = (float) ($ventasTransfQuery['total_transferencia'] ?? 0);
+        $totalesPago = $this->calcularTotalesPagoDia($db, $hoy, $sucursalId);
+        $ventasEfectivo = (float) $totalesPago['ventas_efectivo'];
+        $ventasTransferencia = (float) $totalesPago['ventas_transferencia'];
         $totalGastos = (float) ($gastos['total_gastos'] ?? 0);
-        $fondoInicial = 1000.00; 
+        $fondoInicial = $this->obtenerFondoInicialHoy($db, $hoy, $sucursalId);
 
         $efectivoEsperado = ($fondoInicial + $ventasEfectivo) - $totalGastos;
         $diferencia = $efectivoReal - $efectivoEsperado;
@@ -343,5 +409,55 @@ class CierreController extends BaseController
         }
 
         return $this->response->setJSON(['status' => 'success', 'message' => '¡Día cerrado con éxito! Los pedidos entregados han sido archivados y el inventario restante fue registrado para la siguiente jornada.']);
+    }
+
+    private function calcularTotalesPagoDia($db, string $fecha, int $sucursalId): array
+    {
+        $campos = $db->getFieldNames('pedidos');
+        $tieneColumnasMixtas = in_array('monto_efectivo', $campos, true) && in_array('monto_transferencia', $campos, true);
+
+        $builder = $db->table('pedidos')
+            ->where("DATE(created_at)", $fecha)
+            ->where("estado !=", "cancelado");
+
+        if (in_array('sucursal_id', $campos, true) && $sucursalId > 0) {
+            $builder->where('sucursal_id', $sucursalId);
+        }
+
+        $pedidos = $builder->get()->getResultArray();
+
+        $ventasEfectivo = 0.00;
+        $ventasTransferencia = 0.00;
+
+        foreach ($pedidos as $p) {
+            $total = (float) ($p['total'] ?? 0);
+            $tipoPago = strtolower(trim((string) ($p['tipo_pago'] ?? 'efectivo')));
+
+            if ($tipoPago === 'transferencia') {
+                $ventasTransferencia += $total;
+            } elseif ($tipoPago === 'mixto') {
+                if ($tieneColumnasMixtas) {
+                    $ef = (float) ($p['monto_efectivo'] ?? 0);
+                    $tr = (float) ($p['monto_transferencia'] ?? 0);
+
+                    // Si ambos vienen en 0 por algún motivo, repartimos de forma segura para no perder el total
+                    if ($ef == 0 && $tr == 0 && $total > 0) {
+                        $ef = $total;
+                    }
+                    $ventasEfectivo += $ef;
+                    $ventasTransferencia += $tr;
+                } else {
+                    $ventasEfectivo += $total;
+                }
+            } else {
+                // Efectivo (o cualquier otro valor por defecto)
+                $ventasEfectivo += $total;
+            }
+        }
+
+        return [
+            'ventas_efectivo'      => round($ventasEfectivo, 2),
+            'ventas_transferencia' => round($ventasTransferencia, 2),
+        ];
     }
 }
