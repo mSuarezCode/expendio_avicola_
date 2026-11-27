@@ -66,6 +66,19 @@ class DashboardController extends BaseController
         $data['sucursales']      = $sucursalModel->getActivas();
         $data['sucursalActiva']  = session()->get('nombre_sucursal_activa') ?? 'Expendio Centro';
         $data['lotes']       = $loteModel->where('sucursal_id', $sucursalActivaId)->orderBy('id', 'DESC')->findAll();
+        $lotesEnriquecidos = [];
+        foreach ($data['lotes'] as $loteItem) {
+            $lotesEnriquecidos[] = $this->enriquecerLote($loteItem, $db);
+        }
+
+        usort($lotesEnriquecidos, function ($a, $b) {
+            if ($a['prioridad_orden'] !== $b['prioridad_orden']) {
+                return $a['prioridad_orden'] <=> $b['prioridad_orden'];
+            }
+            return ((int) $b['id']) <=> ((int) $a['id']);
+        });
+
+        $data['lotes'] = $lotesEnriquecidos;
         $data['proveedores'] = $proveedorModel->getActivos();
         
         $data['procesos'] = $db->table('procesamiento_mermas')
@@ -1276,67 +1289,101 @@ class DashboardController extends BaseController
 
     public function actualizarLote()
     {
+        $db = \Config\Database::connect();
         $loteModel = new \App\Models\LoteModel();
-        $id = $this->request->getPost('lote_id');
+        $id = (int) $this->request->getPost('lote_id');
 
         if (!$id) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'ID de lote no recibido.']);
         }
 
-        $jaulas         = (int) $this->request->getPost('jaulas');
-        $piezasPorJaula = (int) $this->request->getPost('piezas_por_jaula');
-        $piezas         = $jaulas * $piezasPorJaula; // Cálculo automático igual que al crear
-        $pesoUnitario   = (float) $this->request->getPost('peso_unitario');
-        $peso           = $piezas * $pesoUnitario; // Peso total calculado
-        $costoUnitario  = (float) $this->request->getPost('costo_unitario');
-        $precioVenta    = (float) $this->request->getPost('precio_venta');
-
-        if ($piezas <= 0 || $peso <= 0) {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'El número de piezas y el peso total deben ser mayores a 0.']);
+        $loteActual = $loteModel->find($id);
+        if (!$loteActual) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Lote no encontrado.']);
         }
 
-        $data = [
-            'proveedor_id'     => $this->request->getPost('proveedor_id'),
-            'tipo_ave'         => $this->request->getPost('tipo_ave'),
-            'jaulas'           => $jaulas,
-            'piezas_por_jaula' => $piezasPorJaula,
-            'piezas'           => $piezas,
-            'peso'             => $peso,
-            'costo_unitario'   => $costoUnitario,
-            'precio_venta'      => $precioVenta // <-- ¡Importante guardar este campo!
-        ];
+        $info = $this->enriquecerLote($loteActual, $db);
+        $permisos = $info['permisos'];
+
+        if ($permisos['solo_lectura']) {
+            return $this->response->setJSON([
+                'status'  => 'error',
+                'message' => 'El lote está agotado y solo puede consultarse en modo lectura.',
+            ]);
+        }
+
+        $data = [];
+        $proveedorId = $this->request->getPost('proveedor_id');
+        if ($proveedorId !== null && $proveedorId !== '') {
+            $data['proveedor_id'] = (int) $proveedorId;
+        }
+
+        if ($permisos['puede_editar_precio'] && $this->request->getPost('precio_venta') !== null) {
+            $precioVenta = (float) $this->request->getPost('precio_venta');
+            if ($precioVenta < 0) {
+                return $this->response->setJSON(['status' => 'error', 'message' => 'El precio de venta no puede ser negativo.']);
+            }
+            $data['precio_venta'] = $precioVenta;
+        }
+
+        if ($permisos['puede_editar_estructura']) {
+            $jaulas         = (int) $this->request->getPost('jaulas');
+            $piezasPorJaula = (int) $this->request->getPost('piezas_por_jaula');
+            $piezas         = $jaulas * $piezasPorJaula;
+            $pesoUnitario   = (float) $this->request->getPost('peso_unitario');
+            $peso           = round($piezas * $pesoUnitario, 2);
+            $costoUnitario  = (float) $this->request->getPost('costo_unitario');
+
+            if ($piezas <= 0 || $peso <= 0) {
+                return $this->response->setJSON(['status' => 'error', 'message' => 'El número de piezas y el peso total deben ser mayores a 0.']);
+            }
+
+            $data['tipo_ave']         = $this->request->getPost('tipo_ave');
+            $data['jaulas']           = $jaulas;
+            $data['piezas_por_jaula'] = $piezasPorJaula;
+            $data['piezas']           = $piezas;
+            $data['peso']             = $peso;
+            $data['costo_unitario']   = $costoUnitario;
+        }
+
+        if (empty($data)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'No hay campos editables permitidos para actualizar.']);
+        }
 
         if ($loteModel->update($id, $data)) {
+            $loteActualizado = $this->enriquecerLote($loteModel->find($id), $db);
             return $this->response->setJSON([
                 'status'  => 'success',
-                'message' => '¡Lote actualizado correctamente!'
+                'message' => '¡Lote actualizado correctamente!',
+                'data'    => $loteActualizado,
             ]);
         }
 
         return $this->response->setJSON([
             'status'  => 'error',
-            'message' => 'No se pudo actualizar el lote en la base de datos.'
+            'message' => 'No se pudo actualizar el lote en la base de datos.',
         ]);
     }
 
     public function eliminarLote($id)
     {
         $db = \Config\Database::connect();
-        
-        // Verificar si el lote ya tiene un proceso de despiece asociado
-        $tieneProceso = $db->table('procesamiento_mermas')->where('lote_id', $id)->countAllResults();
-        if ($tieneProceso > 0) {
-            return $this->response->setJSON([
-                'status'  => 'error',
-                'message' => 'No se puede eliminar este lote porque ya tiene un despiece/procesamiento registrado.'
-            ]);
-        }
-
         $loteModel = new \App\Models\LoteModel();
         $lote = $loteModel->find($id);
 
-        if ($lote && $loteModel->delete($id)) {
-            // Si tenía archivo comprobante físico, lo borramos del servidor
+        if (!$lote) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Lote no encontrado.']);
+        }
+
+        $info = $this->enriquecerLote($lote, $db);
+        if (!$info['permisos']['puede_eliminar']) {
+            return $this->response->setJSON([
+                'status'  => 'error',
+                'message' => 'No se puede eliminar este lote porque ya tiene movimientos (despiece/ventas) o está agotado.',
+            ]);
+        }
+
+        if ($loteModel->delete($id)) {
             if (!empty($lote['comprobante'])) {
                 $rutaArchivo = FCPATH . 'uploads/lotes/' . $lote['comprobante'];
                 if (is_file($rutaArchivo)) {
@@ -1346,38 +1393,32 @@ class DashboardController extends BaseController
 
             return $this->response->setJSON([
                 'status'  => 'success',
-                'message' => 'Lote eliminado correctamente.'
+                'message' => 'Lote eliminado correctamente.',
             ]);
         }
 
         return $this->response->setJSON([
             'status'  => 'error',
-            'message' => 'No se pudo eliminar el lote.'
+            'message' => 'No se pudo eliminar el lote.',
         ]);
     }
 
     public function obtenerLote($id)
     {
+        $db = \Config\Database::connect();
         $loteModel = new \App\Models\LoteModel();
         $lote = $loteModel->find($id);
 
-        if ($lote) {
-            /**
-             * 
-            $db = \Config\Database::connect();
-            // Buscamos el precio de venta actual del producto en el catálogo
-            $producto = $db->table('catalogo_productos')
-                        ->like('LOWER(nombre)', strtolower($lote['tipo_ave']))
-                        ->get()
-                        ->getRowArray();
-
-            $lote['precio_venta'] = $producto['precio_venta_actual'] ?? 0;
-             */
-
-            return $this->response->setJSON(['status' => 'success', 'data' => $lote]);
+        if (!$lote) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Lote no encontrado.']);
         }
 
-        return $this->response->setJSON(['status' => 'error', 'message' => 'Lote no encontrado.']);
+        $loteEnriquecido = $this->enriquecerLote($lote, $db);
+
+        return $this->response->setJSON([
+            'status' => 'success',
+            'data'   => $loteEnriquecido,
+        ]);
     }
 
     public function cancelarPedido()
@@ -1439,5 +1480,98 @@ class DashboardController extends BaseController
             'status' => 'error', 
             'message' => 'Error al intentar actualizar la base de datos.'
         ]);
+    }
+
+    private function enriquecerLote(array $lote, $db): array
+    {
+        $loteId = (int) ($lote['id'] ?? 0);
+        $piezasIniciales = (int) ($lote['piezas'] ?? 0);
+        $pesoInicial = (float) ($lote['peso'] ?? 0);
+        $tipoAveTexto = ucfirst(strtolower(trim((string) ($lote['tipo_ave'] ?? ''))));
+
+        // 1. Piezas destinadas a despiece en procesamiento_mermas
+        $rowDespiece = $db->table('procesamiento_mermas')
+            ->select('COALESCE(SUM(piezas_destinadas), 0) as piezas_despiece, COALESCE(SUM(peso_inicial), 0) as peso_despiece')
+            ->where('lote_id', $loteId)
+            ->get()
+            ->getRowArray();
+
+        $piezasDespiece = (int) ($rowDespiece['piezas_despiece'] ?? 0);
+        $pesoDespiece = (float) ($rowDespiece['peso_despiece'] ?? 0);
+
+        // 2. Piezas vendidas en pedidos activos (no cancelados) asociadas a este lote
+        $nombreLoteVenta = "Lt#{$loteId} - {$tipoAveTexto}";
+        $builderVentas = $db->table('detalle_pedidos')
+            ->select('COALESCE(SUM(detalle_pedidos.cantidad), 0) as piezas_vendidas')
+            ->join('pedidos', 'pedidos.id = detalle_pedidos.pedido_id')
+            ->where('pedidos.estado !=', 'cancelado')
+            ->where('detalle_pedidos.nombre', $nombreLoteVenta);
+
+        if (!empty($lote['sucursal_id'])) {
+            $builderVentas->where('pedidos.sucursal_id', (int) $lote['sucursal_id']);
+        }
+
+        $rowVentas = $builderVentas->get()->getRowArray();
+        $piezasVendidas = (int) round((float) ($rowVentas['piezas_vendidas'] ?? 0));
+
+        // 3. Totales de salidas y saldo restante
+        $piezasTotalSalidas = $piezasDespiece + $piezasVendidas;
+        $piezasRestantes = max(0, $piezasIniciales - $piezasTotalSalidas);
+
+        $pesoPromedio = $piezasIniciales > 0 ? ($pesoInicial / $piezasIniciales) : 0.0;
+        $pesoSalidasKg = $pesoDespiece > 0
+            ? $pesoDespiece
+            : round($pesoPromedio * $piezasTotalSalidas, 2);
+        $pesoRestanteKg = max(0.0, round($pesoInicial - $pesoSalidasKg, 2));
+
+        // 4. Estado operativo
+        if ($piezasRestantes <= 0) {
+            $estadoOperativo = 'agotado';
+            $estadoEtiqueta  = 'Agotado';
+            $prioridadOrden  = 2;
+        } elseif ($piezasTotalSalidas > 0) {
+            $estadoOperativo = 'parcial';
+            $estadoEtiqueta  = 'En proceso';
+            $prioridadOrden  = 1;
+        } else {
+            $estadoOperativo = 'activo';
+            $estadoEtiqueta  = 'Activo';
+            $prioridadOrden  = 0;
+        }
+
+        $tieneMovimientos = $piezasTotalSalidas > 0;
+        $esAgotado = ($estadoOperativo === 'agotado');
+
+        $permisos = [
+            'puede_editar_estructura' => !$tieneMovimientos && !$esAgotado,
+            'puede_editar_precio'     => !$esAgotado,
+            'puede_eliminar'          => !$tieneMovimientos && !$esAgotado,
+            'solo_lectura'           => $esAgotado,
+        ];
+
+        $lote['estado_operativo'] = $estadoOperativo;
+        $lote['estado_etiqueta']  = $estadoEtiqueta;
+        $lote['prioridad_orden']  = $prioridadOrden;
+        $lote['recepcion'] = [
+            'jaulas'           => (int) ($lote['jaulas'] ?? 0),
+            'piezas_por_jaula' => (int) ($lote['piezas_por_jaula'] ?? 0),
+            'piezas_iniciales' => $piezasIniciales,
+            'peso_inicial_kg'  => round($pesoInicial, 2),
+            'costo_unitario'   => round((float) ($lote['costo_unitario'] ?? 0), 2),
+            'precio_venta'     => round((float) ($lote['precio_venta'] ?? 0), 2),
+        ];
+        $lote['salidas'] = [
+            'piezas_despiece'       => $piezasDespiece,
+            'piezas_vendidas'       => $piezasVendidas,
+            'piezas_total_salidas'  => $piezasTotalSalidas,
+            'peso_total_salidas_kg' => round($pesoSalidasKg, 2),
+        ];
+        $lote['saldo'] = [
+            'piezas_restantes' => $piezasRestantes,
+            'peso_restante_kg' => $pesoRestanteKg,
+        ];
+        $lote['permisos'] = $permisos;
+
+        return $lote;
     }
 }

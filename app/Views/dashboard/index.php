@@ -196,23 +196,45 @@
                                     <th>Proveedor</th>
                                     <th>Tipo Ave</th>
                                     <th>Piezas</th>
+                                    <th>Restante / Estado</th>
                                     <th>Peso Total (Kg)</th>
                                     <th>Costo x Pza</th>
                                     <th>Fecha</th>
                                     <th class="text-center">Comprobante del Proveedor</th>
-                                    <th class="text-center">Acciones</th> <!-- NUEVA COLUMNA -->
+                                    <th class="text-center">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="tablaLotesMock">
                                 <?php if (!empty($lotes)): ?>
                                     <?php foreach ($lotes as $l): ?>
-                                        <tr id="fila-lote-tabla-<?= $l['id'] ?>">
+                                        <?php
+                                            $estadoOp = $l['estado_operativo'] ?? 'activo';
+                                            $estadoEtiqueta = $l['estado_etiqueta'] ?? 'Activo';
+                                            $piezasIniciales = (int) ($l['recepcion']['piezas_iniciales'] ?? $l['piezas'] ?? 0);
+                                            $piezasRestantes = (int) ($l['saldo']['piezas_restantes'] ?? $piezasIniciales);
+                                            $puedeEliminar = $l['permisos']['puede_eliminar'] ?? true;
+                                            $esAgotado = ($estadoOp === 'agotado');
+
+                                            $badgeEstado = 'bg-success';
+                                            $claseFila = '';
+                                            if ($estadoOp === 'parcial') {
+                                                $badgeEstado = 'bg-warning text-dark';
+                                            } elseif ($esAgotado) {
+                                                $badgeEstado = 'bg-secondary';
+                                                $claseFila = 'table-light opacity-75';
+                                            }
+                                        ?>
+                                        <tr id="fila-lote-tabla-<?= $l['id'] ?>" class="<?= $claseFila ?>">
                                             <td><span class="badge bg-secondary">#<?= $l['id'] ?></span></td>
                                             <td class="fw-bold">Proveedor ID #<?= $l['proveedor_id'] ?></td>
                                             <td><span class="badge bg-<?= $l['tipo_ave'] === 'pollo' ? 'warning text-dark' : 'danger' ?>"><?= strtoupper($l['tipo_ave']) ?></span></td>
-                                            <td><?= $l['piezas'] ?> aves</td>
-                                            <td><?= number_format($l['peso'], 2) ?> kg</td>
-                                            <td class="text-success fw-bold">$<?= number_format($l['costo_unitario'], 2) ?></td>
+                                            <td><?= $piezasIniciales ?> aves</td>
+                                            <td id="celda-estado-lote-<?= $l['id'] ?>">
+                                                <div class="fw-bold"><?= $piezasRestantes ?> / <?= $piezasIniciales ?> aves</div>
+                                                <span class="badge <?= $badgeEstado ?>"><?= esc($estadoEtiqueta) ?></span>
+                                            </td>
+                                            <td><?= number_format((float) $l['peso'], 2) ?> kg</td>
+                                            <td class="text-success fw-bold">$<?= number_format((float) $l['costo_unitario'], 2) ?></td>
                                             <td><?= $l['fecha_recepcion'] ?></td>
                                             <td class="text-center" id="celda-comprobante-<?= $l['id'] ?>">
                                                 <?php if (!empty($l['comprobante'])): ?>
@@ -231,17 +253,17 @@
                                                     </button>
                                                 <?php endif; ?>
                                             </td>
-                                            <!-- NUEVA CELDA DE ACCIONES -->
                                             <td class="text-center">
                                                 <div class="d-flex justify-content-center gap-1">
-                                                    <button type="button" class="btn btn-sm btn-outline-primary" 
+                                                    <button type="button" class="btn btn-sm <?= $esAgotado ? 'btn-outline-secondary' : 'btn-outline-primary' ?>" 
                                                         onclick="abrirModalEditarLote(<?= $l['id'] ?>)" 
-                                                        title="Editar Lote">
-                                                        <i class="fa-solid fa-pen-to-square"></i>
+                                                        title="<?= $esAgotado ? 'Ver Detalle de Lote (Agotado)' : 'Editar Lote' ?>">
+                                                        <i class="fa-solid <?= $esAgotado ? 'fa-eye' : 'fa-pen-to-square' ?>"></i>
                                                     </button>
                                                     <button type="button" class="btn btn-sm btn-outline-danger" 
                                                         onclick="eliminarLoteAjax(<?= $l['id'] ?>)" 
-                                                        title="Eliminar Lote">
+                                                        title="<?= $puedeEliminar ? 'Eliminar Lote' : 'No se puede eliminar un lote con movimientos o agotado' ?>"
+                                                        <?= $puedeEliminar ? '' : 'disabled' ?>>
                                                         <i class="fa-solid fa-trash"></i>
                                                     </button>
                                                 </div>
@@ -249,7 +271,7 @@
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php else: ?>
-                                    <tr><td colspan="9" class="text-center text-muted">No hay lotes registrados en la base de datos.</td></tr>
+                                    <tr><td colspan="10" class="text-center text-muted">No hay lotes registrados en la base de datos.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -2275,20 +2297,57 @@
     </div>
 
     <!-- Modal Editar Lote -->
-    <div class="modal fade" id="modalEditarLote" tabindex="-1">
+    <div class="modal fade" id="modalEditarLote" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <div class="modal-header bg-dark text-white">
-                    <h5 class="modal-title"><i class="fa-solid fa-pen-to-square text-warning me-2"></i> Editar Lote <span id="lblEditLoteId"></span></h5>
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="tituloModalLote">
+                        <i class="fa-solid fa-pen-to-square me-2"></i>Editar Lote #<span id="edit_lote_id_label"></span>
+                    </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <form id="formEditarLoteDb">
-                    <input type="hidden" id="editLoteId" name="lote_id">
+                <form id="formEditarLote" onsubmit="guardarEdicionLoteAjax(event)">
                     <div class="modal-body">
-                        <div class="row g-3 mb-3">
+                        <input type="hidden" id="edit_lote_id" name="lote_id">
+
+                        <!-- Resumen del ciclo de vida del lote -->
+                        <div class="card bg-light border-0 mb-3">
+                            <div class="card-body py-2 px-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="fw-bold small text-uppercase text-muted">Estado y trazabilidad del lote</span>
+                                    <span id="edit_badge_estado" class="badge bg-success">Activo</span>
+                                </div>
+                                <div class="row g-2 small text-center">
+                                    <div class="col-md-4">
+                                        <div class="p-2 bg-white rounded border">
+                                            <div class="text-muted">Recepción inicial</div>
+                                            <div class="fw-bold" id="resumen_recepcion_piezas">0 aves</div>
+                                            <div class="text-muted" id="resumen_recepcion_peso">0.00 kg</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="p-2 bg-white rounded border">
+                                            <div class="text-muted">Salidas (Despiece / Ventas)</div>
+                                            <div class="fw-bold text-warning-emphasis" id="resumen_salidas_piezas">0 aves</div>
+                                            <div class="text-muted" id="resumen_salidas_detalle">Despiece: 0 | Ventas: 0</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="p-2 bg-white rounded border">
+                                            <div class="text-muted">Saldo actual</div>
+                                            <div class="fw-bold text-success" id="resumen_saldo_piezas">0 aves</div>
+                                            <div class="text-muted" id="resumen_saldo_peso">0.00 kg</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="avisoBloqueoLote" class="alert alert-warning py-2 px-3 mt-2 mb-0 small d-none"></div>
+                            </div>
+                        </div>
+
+                        <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label fw-bold">Proveedor</label>
-                                <select class="form-select" id="editLoteProveedor" name="proveedor_id" required>
+                                <select class="form-select" id="edit_proveedor_id" name="proveedor_id" required>
                                     <?php if (!empty($proveedores)): ?>
                                         <?php foreach ($proveedores as $prov): ?>
                                             <option value="<?= $prov['id'] ?>"><?= esc($prov['nombre_empresa']) ?></option>
@@ -2298,54 +2357,47 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-bold">Tipo de Ave</label>
-                                <select class="form-select" id="editLoteTipo" name="tipo_ave" required>
-                                    <option value="pollo">Pollo (Compra por Peso / Jaulas)</option>
+                                <select class="form-select" id="edit_tipo_ave" name="tipo_ave" required>
+                                    <option value="pollo">Pollo</option>
                                     <option value="gallina">Gallina</option>
                                 </select>
                             </div>
-                        </div>
-
-                        <div class="row g-3 mb-3">
                             <div class="col-md-4">
-                                <label class="form-label fw-bold">Número de Jaulas</label>
-                                <input type="number" class="form-control" id="editJaulas" name="jaulas" oninput="calcularTotalesEdicion()" required>
+                                <label class="form-label fw-bold">Jaulas</label>
+                                <input type="number" class="form-control" id="edit_jaulas" name="jaulas" min="1" oninput="calcularEdicionLote()" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label fw-bold">Piezas por Jaula</label>
-                                <input type="number" class="form-control" id="editPiezasPorJaula" name="piezas_por_jaula" oninput="calcularTotalesEdicion()" required>
+                                <input type="number" class="form-control" id="edit_piezas_por_jaula" name="piezas_por_jaula" min="1" oninput="calcularEdicionLote()" required>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label text-primary fw-bold">Total de Piezas (Calculado)</label>
-                                <input type="number" class="form-control bg-light" id="editTotalPiezas" readonly>
-                            </div>
-                        </div>
-
-                        <div class="row g-3 mb-3">
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold text-danger">Peso Unitario (Kg) *</label>
-                                <input type="number" step="0.01" class="form-control" id="editPesoUnitario" name="peso_unitario" oninput="calcularTotalesEdicion()" required>
-                                <small class="text-muted">Peso promedio por ave.</small>
+                                <label class="form-label fw-bold">Total Piezas</label>
+                                <input type="number" class="form-control bg-light" id="edit_total_piezas" readonly>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label text-success fw-bold">Peso Total (Kg) (Calculado)</label>
-                                <input type="number" step="0.01" class="form-control bg-light" id="editPesoTotal" readonly>
+                                <label class="form-label fw-bold">Peso Promedio (kg)</label>
+                                <input type="number" step="0.01" class="form-control" id="edit_peso_unitario" name="peso_unitario" min="0.01" oninput="calcularEdicionLote()" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label fw-bold">Costo Unitario ($)</label>
-                                <input type="number" step="0.50" class="form-control" id="editCostoUnitario" name="costo_unitario" oninput="calcularTotalesEdicion()" required>
+                                <input type="number" step="0.01" class="form-control" id="edit_costo_unitario" name="costo_unitario" min="0.01" required>
                             </div>
-                            
                             <div class="col-md-4">
-                                <label class="form-label fw-bold text-primary">Precio de Venta al Público ($)</label>
-                                <input type="number" step="0.50" class="form-control fw-bold text-primary" id="editPrecioVenta" name="precio_venta" required>
-                                <small class="text-muted">Precio al público actualizado.</small>
+                                <label class="form-label fw-bold">Precio Venta Público ($)</label>
+                                <input type="number" step="0.01" class="form-control" id="edit_precio_venta" name="precio_venta" min="0" required>
+                            </div>
+                            <div class="col-12">
+                                <div class="alert alert-info py-2 mb-0 d-flex justify-content-between align-items-center">
+                                    <span><i class="fa-solid fa-scale-balanced me-2"></i>Peso Total Calculado:</span>
+                                    <strong id="edit_peso_total_label" class="fs-6">0.00 kg</strong>
+                                </div>
                             </div>
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="button" id="btnActualizarLote" class="btn btn-success fw-bold" onclick="guardarEdicionLoteAjax()">
-                            <i class="fa-solid fa-check me-1"></i> Guardar Cambios en BD
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                        <button type="submit" id="btnGuardarEdicionLote" class="btn btn-primary">
+                            <i class="fa-solid fa-save me-1"></i>Guardar Cambios
                         </button>
                     </div>
                 </form>
@@ -6145,68 +6197,135 @@ function abrirModalEditarLote(id) {
     })
     .then(res => res.json())
     .then(response => {
-        if (response.status === 'success') {
-            let lote = response.data;
+        if (response.status === 'success' && response.data) {
+            const lote = response.data;
+            const recepcion = lote.recepcion || {};
+            const salidas = lote.salidas || {};
+            const saldo = lote.saldo || {};
+            const permisos = lote.permisos || {
+                puede_editar_estructura: true,
+                puede_editar_precio: true,
+                solo_lectura: false
+            };
 
-            document.getElementById('lblEditLoteId').innerText = `#${lote.id}`;
-            document.getElementById('editLoteId').value = lote.id;
-            document.getElementById('editLoteProveedor').value = lote.proveedor_id;
-            document.getElementById('editLoteTipo').value = lote.tipo_ave;
-            
-            // Validar de forma segura el precio de venta por si el input aún no está en el HTML
-            let inputPrecioVenta = document.getElementById('editPrecioVenta');
+            const piezas = parseInt(recepcion.piezas_iniciales ?? lote.piezas) || 1;
+            const pesoTotal = parseFloat(recepcion.peso_inicial_kg ?? lote.peso) || 0;
+            const pesoUnitario = piezas > 0 ? (pesoTotal / piezas) : 0;
+
+            document.getElementById('edit_lote_id_label').innerText = lote.id;
+            document.getElementById('edit_lote_id').value = lote.id;
+            document.getElementById('edit_proveedor_id').value = lote.proveedor_id;
+            document.getElementById('edit_tipo_ave').value = (lote.tipo_ave || 'pollo').toLowerCase();
+            document.getElementById('edit_jaulas').value = recepcion.jaulas ?? lote.jaulas ?? 0;
+            document.getElementById('edit_piezas_por_jaula').value = recepcion.piezas_por_jaula ?? lote.piezas_por_jaula ?? 0;
+            document.getElementById('edit_peso_unitario').value = pesoUnitario.toFixed(2);
+            document.getElementById('edit_costo_unitario').value = Number(recepcion.costo_unitario ?? lote.costo_unitario ?? 0).toFixed(2);
+
+            const inputPrecioVenta = document.getElementById('edit_precio_venta');
             if (inputPrecioVenta) {
-                inputPrecioVenta.value = lote.precio_venta || 0;
+                inputPrecioVenta.value = Number(recepcion.precio_venta ?? lote.precio_venta ?? 0).toFixed(2);
+                inputPrecioVenta.disabled = !permisos.puede_editar_precio;
             }
-            
-            document.getElementById('editJaulas').value = lote.jaulas || 0;
-            document.getElementById('editPiezasPorJaula').value = lote.piezas_por_jaula || 0;
-            
-            let piezas = parseInt(lote.piezas) || 1;
-            let pesoTotal = parseFloat(lote.peso) || 0;
-            let pesoUnitario = piezas > 0 ? (pesoTotal / piezas) : 0;
 
-            document.getElementById('editPesoUnitario').value = pesoUnitario.toFixed(2);
-            document.getElementById('editCostoUnitario').value = lote.costo_unitario;
+            // Resumen de trazabilidad
+            const estadoOp = lote.estado_operativo || 'activo';
+            const badgeEstado = document.getElementById('edit_badge_estado');
+            if (badgeEstado) {
+                badgeEstado.innerText = lote.estado_etiqueta || 'Activo';
+                badgeEstado.className = 'badge ' + (
+                    estadoOp === 'parcial' ? 'bg-warning text-dark' :
+                    (estadoOp === 'agotado' ? 'bg-secondary' : 'bg-success')
+                );
+            }
 
-            calcularTotalesEdicion();
+            document.getElementById('resumen_recepcion_piezas').innerText = `${piezas} aves`;
+            document.getElementById('resumen_recepcion_peso').innerText = `${pesoTotal.toFixed(2)} kg`;
+            document.getElementById('resumen_salidas_piezas').innerText = `${Number(salidas.piezas_total_salidas || 0)} aves`;
+            document.getElementById('resumen_salidas_detalle').innerText =
+                `Despiece: ${Number(salidas.piezas_despiece || 0)} | Ventas: ${Number(salidas.piezas_vendidas || 0)}`;
+            document.getElementById('resumen_saldo_piezas').innerText = `${Number(saldo.piezas_restantes || 0)} aves`;
+            document.getElementById('resumen_saldo_peso').innerText = `${Number(saldo.peso_restante_kg || 0).toFixed(2)} kg`;
 
-            let modal = new bootstrap.Modal(document.getElementById('modalEditarLote'));
+            // Bloqueo de campos según permisos
+            ['edit_tipo_ave', 'edit_jaulas', 'edit_piezas_por_jaula', 'edit_peso_unitario', 'edit_costo_unitario'].forEach(idCampo => {
+                const el = document.getElementById(idCampo);
+                if (el) el.disabled = !permisos.puede_editar_estructura;
+            });
+
+            const selectProv = document.getElementById('edit_proveedor_id');
+            if (selectProv) selectProv.disabled = Boolean(permisos.solo_lectura);
+
+            const tituloModal = document.getElementById('tituloModalLote');
+            if (tituloModal) {
+                tituloModal.innerHTML = permisos.solo_lectura
+                    ? `<i class="fa-solid fa-eye me-2"></i>Ver Detalle de Lote #${lote.id} (Agotado)`
+                    : `<i class="fa-solid fa-pen-to-square me-2"></i>Editar Lote #${lote.id}`;
+            }
+
+            const btnGuardar = document.getElementById('btnGuardarEdicionLote');
+            if (btnGuardar) {
+                btnGuardar.classList.toggle('d-none', Boolean(permisos.solo_lectura));
+                btnGuardar.disabled = Boolean(permisos.solo_lectura);
+            }
+
+            const aviso = document.getElementById('avisoBloqueoLote');
+            if (aviso) {
+                if (permisos.solo_lectura) {
+                    aviso.className = 'alert alert-secondary py-2 px-3 mt-2 mb-0 small';
+                    aviso.innerHTML = '<i class="fa-solid fa-lock me-1"></i>Este lote está agotado y se muestra en modo solo lectura.';
+                } else if (!permisos.puede_editar_estructura) {
+                    aviso.className = 'alert alert-warning py-2 px-3 mt-2 mb-0 small';
+                    aviso.innerHTML = '<i class="fa-solid fa-triangle-exclamation me-1"></i>El lote ya tiene movimientos (despiece o ventas). Tipo de ave, jaulas, piezas, peso y costo quedan bloqueados; puedes ajustar el precio de venta.';
+                } else {
+                    aviso.className = 'alert alert-warning py-2 px-3 mt-2 mb-0 small d-none';
+                    aviso.innerHTML = '';
+                }
+            }
+
+            calcularEdicionLote();
+
+            const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modalEditarLote'));
             modal.show();
         } else {
-            alert('Error: ' + response.message);
+            alert('Error: ' + (response.message || 'No se pudo cargar el lote.'));
         }
     })
     .catch(err => {
-        console.error('Error detallado:', err); // Revisa la consola F12 si vuelve a fallar
+        console.error('Error detallado:', err);
         alert('No se pudieron cargar los datos del lote desde la base de datos.');
     });
 }
 
-function guardarEdicionLoteAjax() {
-    let formEl = document.getElementById('formEditarLoteDb');
-    let formData = new FormData(formEl);
-    let loteId = document.getElementById('editLoteId').value;
-    let provId = document.getElementById('editLoteProveedor').value;
-    let tipoAve = document.getElementById('editLoteTipo').value;
-    
-    let jaulas = parseInt(document.getElementById('editJaulas').value) || 0;
-    let piezasPorJaula = parseInt(document.getElementById('editPiezasPorJaula').value) || 0;
-    let piezas = jaulas * piezasPorJaula;
-    let pesoTotal = parseFloat(document.getElementById('editPesoTotal').value) || 0;
-    let costo = parseFloat(document.getElementById('editCostoUnitario').value) || 0;
+function guardarEdicionLoteAjax(event) {
+    if (event) event.preventDefault();
 
-    if (piezas <= 0 || pesoTotal <= 0) {
+    const formEl = document.getElementById('formEditarLote');
+    const formData = new FormData(formEl);
+    const loteId = document.getElementById('edit_lote_id').value;
+    const provId = document.getElementById('edit_proveedor_id').value;
+    const tipoAve = document.getElementById('edit_tipo_ave').value;
+
+    const jaulas = parseInt(document.getElementById('edit_jaulas').value) || 0;
+    const piezasPorJaula = parseInt(document.getElementById('edit_piezas_por_jaula').value) || 0;
+    const piezas = jaulas * piezasPorJaula;
+    const pesoUnit = parseFloat(document.getElementById('edit_peso_unitario').value) || 0;
+    const pesoTotal = piezas * pesoUnit;
+    const costo = parseFloat(document.getElementById('edit_costo_unitario').value) || 0;
+
+    const estructuraHabilitada = !document.getElementById('edit_jaulas').disabled;
+    if (estructuraHabilitada && (piezas <= 0 || pesoTotal <= 0)) {
         alert('Las piezas y el peso total deben ser mayores a cero.');
         return;
     }
 
     formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
 
-    let btn = document.getElementById('btnActualizarLote');
-    let textoOriginal = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin me-1"></i> Guardando...`;
+    const btn = document.getElementById('btnGuardarEdicionLote');
+    const textoOriginal = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin me-1"></i> Guardando...`;
+    }
 
     fetch('<?= base_url('/produccion/actualizar-lote') ?>', {
         method: 'POST',
@@ -6215,35 +6334,50 @@ function guardarEdicionLoteAjax() {
     })
     .then(res => res.json())
     .then(data => {
-        btn.disabled = false;
-        btn.innerHTML = textoOriginal;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = textoOriginal;
+        }
 
         if (data.status === 'success') {
-            let modalEl = document.getElementById('modalEditarLote');
-            bootstrap.Modal.getInstance(modalEl).hide();
+            const modalEl = document.getElementById('modalEditarLote');
+            const modalInst = bootstrap.Modal.getInstance(modalEl);
+            if (modalInst) modalInst.hide();
 
-            // Refrescar los datos en la tabla principal visualmente sin recargar
-            let fila = document.getElementById(`fila-lote-tabla-${loteId}`);
+            const fila = document.getElementById(`fila-lote-tabla-${loteId}`);
             if (fila) {
-                let celdas = fila.querySelectorAll('td');
-                let badgeClase = tipoAve === 'pollo' ? 'warning text-dark' : 'danger';
-                
+                const celdas = fila.querySelectorAll('td');
+                const loteActualizado = data.data || {};
+                const tipoFinal = (loteActualizado.tipo_ave || tipoAve || 'pollo').toLowerCase();
+                const piezasIniciales = parseInt(loteActualizado.recepcion?.piezas_iniciales ?? loteActualizado.piezas ?? piezas) || 0;
+                const piezasRestantes = parseInt(loteActualizado.saldo?.piezas_restantes ?? piezasIniciales) || 0;
+                const pesoFinal = parseFloat(loteActualizado.peso ?? pesoTotal) || 0;
+                const costoFinal = parseFloat(loteActualizado.costo_unitario ?? costo) || 0;
+
+                const estadoOp = loteActualizado.estado_operativo || 'activo';
+                const estadoEtiqueta = loteActualizado.estado_etiqueta || 'Activo';
+                const badgeClase = tipoFinal === 'pollo' ? 'warning text-dark' : 'danger';
+                const badgeEstado = estadoOp === 'parcial' ? 'bg-warning text-dark' : (estadoOp === 'agotado' ? 'bg-secondary' : 'bg-success');
+
                 celdas[1].innerText = `Proveedor ID #${provId}`;
-                celdas[2].innerHTML = `<span class="badge bg-${badgeClase}">${tipoAve.toUpperCase()}</span>`;
-                celdas[3].innerText = `${piezas} aves`;
-                celdas[4].innerText = `${pesoTotal.toFixed(2)} kg`;
-                celdas[5].innerText = `$${costo.toFixed(2)}`;
+                celdas[2].innerHTML = `<span class="badge bg-${badgeClase}">${tipoFinal.toUpperCase()}</span>`;
+                celdas[3].innerText = `${piezasIniciales} aves`;
+                celdas[4].innerHTML = `<div class="fw-bold">${piezasRestantes} / ${piezasIniciales} aves</div><span class="badge ${badgeEstado}">${estadoEtiqueta}</span>`;
+                celdas[5].innerText = `${pesoFinal.toFixed(2)} kg`;
+                celdas[6].innerText = `$${costoFinal.toFixed(2)}`;
             }
 
-            alert(data.message);
+            alert(data.message || 'Lote actualizado correctamente.');
         } else {
-            alert('Error: ' + data.message);
+            alert('Error: ' + (data.message || 'No se pudo actualizar el lote.'));
         }
     })
     .catch(err => {
         console.error('Error:', err);
-        btn.disabled = false;
-        btn.innerHTML = textoOriginal;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = textoOriginal;
+        }
         alert('Ocurrió un error al actualizar el lote.');
     });
 }
@@ -6290,6 +6424,16 @@ function calcularTotalesEdicion() {
     // NUEVO: Cálculo Automático en Edición
     let costoUnitario = parseFloat(document.getElementById('editCostoUnitario').value) || 0;
     let costoTotal = pesoTotal * costoUnitario;
+}
+function calcularEdicionLote() {
+    const jaulas = Number(document.getElementById('edit_jaulas').value || 0);
+    const piezasJaula = Number(document.getElementById('edit_piezas_por_jaula').value || 0);
+    const pesoUnit = Number(document.getElementById('edit_peso_unitario').value || 0);
+    const totalPiezas = jaulas * piezasJaula;
+    const pesoTotal = totalPiezas * pesoUnit;
+
+    document.getElementById('edit_total_piezas').value = totalPiezas;
+    document.getElementById('edit_peso_total_label').innerText = `${pesoTotal.toFixed(2)} kg`;
 }
 <?php endif; ?>
 
